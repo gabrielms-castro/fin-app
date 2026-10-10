@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  {% include "partials/head.html" %}
+  <title>Fin App</title>
+</head>
+<body>
+  {% load static %}
+  <div class="min-h-screen md:grid md:grid-cols-[240px_minmax(0,1fr)]">
+    <aside class="sticky top-0 hidden h-screen flex-col gap-1 border-r border-slate-200 bg-white px-3 py-5 md:flex dark:border-slate-800 dark:bg-slate-900" aria-label="Menu principal">
+      <div class="mb-5 flex items-center gap-2 px-3 text-lg font-bold">
+        <span class="grid size-8 place-items-center rounded-lg bg-indigo-600 text-white"><i data-lucide="wallet" class="size-4"></i></span>
+        Fin App
+      </div>
+      <a href="#/dashboard" data-nav="dashboard" class="nav-link"><i data-lucide="layout-dashboard" class="size-5"></i>Dashboard</a>
+      <a href="#/lancamentos" data-nav="lancamentos" class="nav-link"><i data-lucide="receipt" class="size-5"></i>Lançamentos</a>
+      <a href="#/cartoes" data-nav="cartoes" class="nav-link"><i data-lucide="credit-card" class="size-5"></i>Cartões</a>
+      <a href="#/assinaturas" data-nav="assinaturas" class="nav-link"><i data-lucide="monitor-play" class="size-5"></i>Assinaturas</a>
+      <a href="#/recorrentes" data-nav="recorrentes" class="nav-link"><i data-lucide="repeat" class="size-5"></i>Contas fixas</a>
+      <a href="#/dividas" data-nav="dividas" class="nav-link"><i data-lucide="landmark" class="size-5"></i>Dívidas</a>
+      <a href="#/investimentos" data-nav="investimentos" class="nav-link"><i data-lucide="piggy-bank" class="size-5"></i>Investimentos</a>
+      <a href="#/receitas" data-nav="receitas" class="nav-link"><i data-lucide="trending-up" class="size-5"></i>Receitas</a>
+      <a href="#/config" data-nav="config" class="nav-link"><i data-lucide="settings" class="size-5"></i>Configurações</a>
+      <div class="mt-auto flex items-center justify-between border-t border-slate-200 px-3 pt-4 text-sm dark:border-slate-800">
+        <span class="muted truncate">{{ user.get_username }}</span>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+          <button class="btn-icon" title="Sair" aria-label="Sair"><i data-lucide="log-out" class="size-4"></i></button>
+        </form>
+      </div>
+    </aside>
+
+    <main id="app" class="mx-auto w-full max-w-6xl px-4 pt-5 pb-28 outline-none md:px-8 md:pt-8 md:pb-10" tabindex="-1"></main>
+  </div>
+
+  <nav class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 items-center border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-900/95" aria-label="Menu">
+    <a href="#/dashboard" data-nav="dashboard" class="tab-link"><i data-lucide="layout-dashboard" class="size-5"></i>Início</a>
+    <a href="#/lancamentos" data-nav="lancamentos" class="tab-link"><i data-lucide="receipt" class="size-5"></i>Lançamentos</a>
+    <button type="button" data-action="quick-add" aria-label="Novo lançamento"
+      class="mx-auto -mt-6 grid size-14 cursor-pointer place-items-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 active:scale-95">
+      <i data-lucide="plus" class="size-6"></i>
+    </button>
+    <a href="#/cartoes" data-nav="cartoes" class="tab-link"><i data-lucide="credit-card" class="size-5"></i>Cartões</a>
+    <button type="button" data-action="more-menu" class="tab-link cursor-pointer"><i data-lucide="menu" class="size-5"></i>Mais</button>
+  </nav>
+
+  <div id="more-menu" class="fixed inset-0 z-40 flex items-end bg-slate-900/40" hidden>
+    <div class="w-full rounded-t-2xl bg-white p-2 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-slate-900">
+      <div class="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-700"></div>
+      <a href="#/assinaturas" class="nav-link"><i data-lucide="monitor-play" class="size-5"></i>Assinaturas</a>
+      <a href="#/recorrentes" class="nav-link"><i data-lucide="repeat" class="size-5"></i>Contas fixas</a>
+      <a href="#/dividas" class="nav-link"><i data-lucide="landmark" class="size-5"></i>Dívidas</a>
+      <a href="#/investimentos" class="nav-link"><i data-lucide="piggy-bank" class="size-5"></i>Investimentos</a>
+      <a href="#/receitas" class="nav-link"><i data-lucide="trending-up" class="size-5"></i>Receitas</a>
+      <a href="#/config" class="nav-link"><i data-lucide="settings" class="size-5"></i>Configurações</a>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+        <button class="nav-link w-full cursor-pointer"><i data-lucide="log-out" class="size-5"></i>Sair ({{ user.get_username }})</button>
+      </form>
+    </div>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast" role="status" aria-live="polite"
+    class="pointer-events-none fixed bottom-24 left-1/2 z-[60] max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm text-white opacity-0 shadow-lg transition-opacity md:bottom-8 dark:bg-white dark:text-slate-900"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
+  <script>lucide.createIcons();</script>
+  <script type="module" src="{% static 'js/app.js' %}"></script>
+</body>
+</html>

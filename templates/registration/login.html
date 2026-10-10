@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  {% include "partials/head.html" %}
+  <title>Entrar · Fin App</title>
+</head>
+<body class="grid min-h-screen place-items-center p-4">
+  <form method="post" class="card w-full max-w-sm space-y-4">
+    {% csrf_token %}
+    <div class="flex items-center gap-3">
+      <span class="grid size-10 place-items-center rounded-xl bg-indigo-600 text-white"><i data-lucide="wallet" class="size-5"></i></span>
+      <div><h1 class="text-xl font-bold">Fin App</h1><p class="muted text-sm">Suas finanças pessoais</p></div>
+    </div>
+    {% if form.errors %}<p class="field-error flex items-center gap-1.5 !text-sm"><i data-lucide="circle-alert" class="size-4"></i>Usuário ou senha inválidos.</p>{% endif %}
+    <label class="field">Usuário<input class="input" name="username" autocomplete="username" required autofocus></label>
+    <label class="field">Senha<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+    <input type="hidden" name="next" value="{{ next|default:'/' }}">
+    <button class="btn btn-primary w-full">Entrar</button>
+  </form>
+  <script>lucide.createIcons();</script>
+</body>
+</html>
