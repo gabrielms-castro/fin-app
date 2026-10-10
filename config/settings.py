@@ -152,6 +152,8 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+    "DEFAULT_PAGINATION_CLASS": "finance.pagination.StandardPagination",
+    "PAGE_SIZE": 50,
     "COERCE_DECIMAL_TO_STRING": False,
 }
 
