@@ -23,9 +23,12 @@
       <a href="#/config" data-nav="config" class="nav-link"><i data-lucide="settings" class="size-5"></i>Configurações</a>
       <div class="mt-auto flex items-center justify-between border-t border-slate-200 px-3 pt-4 text-sm dark:border-slate-800">
         <span class="muted truncate">{{ user.get_username }}</span>
-        <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-          <button class="btn-icon" title="Sair" aria-label="Sair"><i data-lucide="log-out" class="size-4"></i></button>
-        </form>
+        <div class="flex items-center">
+          <a href="{% url 'password_change' %}" class="btn-icon" title="Trocar senha" aria-label="Trocar senha"><i data-lucide="key-round" class="size-4"></i></a>
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+            <button class="btn-icon" title="Sair" aria-label="Sair"><i data-lucide="log-out" class="size-4"></i></button>
+          </form>
+        </div>
       </div>
     </aside>
 
@@ -52,6 +55,7 @@
       <a href="#/investimentos" class="nav-link"><i data-lucide="piggy-bank" class="size-5"></i>Investimentos</a>
       <a href="#/receitas" class="nav-link"><i data-lucide="trending-up" class="size-5"></i>Receitas</a>
       <a href="#/config" class="nav-link"><i data-lucide="settings" class="size-5"></i>Configurações</a>
+      <a href="{% url 'password_change' %}" class="nav-link"><i data-lucide="key-round" class="size-5"></i>Trocar senha</a>
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}
         <button class="nav-link w-full cursor-pointer"><i data-lucide="log-out" class="size-5"></i>Sair ({{ user.get_username }})</button>
       </form>

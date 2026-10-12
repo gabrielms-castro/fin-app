@@ -18,3 +18,21 @@ class AdminTests(TestCase):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get("/admin/").status_code, 302)
 
+
+class PasswordChangeTests(TestCase):
+    def setUp(self):
+        self.user = make_user()
+
+    def test_requires_login(self):
+        self.assertRedirects(self.client.get("/senha/"), "/login/?next=/senha/")
+
+    def test_change_password_keeps_session(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get("/senha/").status_code, 200)
+        r = self.client.post("/senha/", {
+            "old_password": "senha-forte-123", "new_password1": "outra-senha-456", "new_password2": "outra-senha-456",
+        })
+        self.assertRedirects(r, "/senha/ok/")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("outra-senha-456"))
+        self.assertEqual(self.client.get("/").status_code, 200)
