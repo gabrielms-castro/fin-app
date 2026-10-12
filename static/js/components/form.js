@@ -68,17 +68,6 @@ document.addEventListener("click", (e) => {
   input.focus();
 });
 
-// Abre o calendário ao clicar em qualquer parte do campo de data/mês, não só no ícone.
-document.addEventListener("click", (e) => {
-  const input = e.target.closest('input[type="date"], input[type="month"]');
-  if (!input || input.disabled || input.readOnly) return;
-  try {
-    input.showPicker?.();
-  } catch {
-    /* navegador sem suporte: mantém o comportamento padrão */
-  }
-});
-
 /**
  * Renderiza campos a partir de especificações:
  * { name, label, type: text|number|money|date|month|select|textarea|checkbox|seg|color,
