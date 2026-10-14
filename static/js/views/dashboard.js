@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { PALETTE, moneyTick, renderChart } from "../components/charts.js";
 import { fields, readForm } from "../components/form.js";
+import { skeletonRows } from "../components/loading.js";
 import { openModal, toast } from "../components/modal.js";
 import { addMonths, currentMonth, fmtDate, fmtMonth, fmtMonthLong, html, money, pct, signClass } from "../format.js";
 import { icon } from "../icons.js";
@@ -12,7 +13,7 @@ const BLOCK_COLS = "md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_minmax
 
 export async function render(el, { query }) {
   let month = query.month || currentMonth();
-  el.innerHTML = html`${pageHead("Dashboard", monthNav(month))}<div data-body>${empty("Carregando…", "clock")}</div>`;
+  el.innerHTML = html`${pageHead("Dashboard", monthNav(month))}<div data-body><div class="card">${skeletonRows()}</div></div>`;
 
   el.querySelector("[data-monthnav]").addEventListener("click", (e) => {
     const step = Number(e.target.closest("[data-step]")?.dataset.step);
@@ -24,11 +25,17 @@ export async function render(el, { query }) {
   async function load() {
     setQuery(month === currentMonth() ? {} : { month });
     el.querySelector("[data-month-label]").textContent = fmtMonthLong(`${month}-01`);
-    const [summary, projection] = await Promise.all([
-      api.get("dashboard/", { month }),
-      api.get("projection/", { months: 12, start: month }),
-    ]);
-    draw(el.querySelector("[data-body]"), summary, projection, month, load);
+    const body = el.querySelector("[data-body]");
+    body.classList.add("is-loading");
+    try {
+      const [summary, projection] = await Promise.all([
+        api.get("dashboard/", { month }),
+        api.get("projection/", { months: 12, start: month }),
+      ]);
+      draw(body, summary, projection, month, load);
+    } finally {
+      body.classList.remove("is-loading");
+    }
   }
 
   await load();

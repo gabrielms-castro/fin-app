@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { fields, options, readForm } from "../components/form.js";
+import { setButtonLoading, skeletonRows } from "../components/loading.js";
 import { confirmDialog, toast } from "../components/modal.js";
 import { addMonths, currentMonth, fmtDate, fmtMonth, fmtMonthLong, html, money } from "../format.js";
 import { icon } from "../icons.js";
@@ -57,7 +58,7 @@ export async function render(el, { query }) {
       </details>
       <div class="card">
         <div class="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-sm" data-totals></div>
-        <div class="list" data-rows></div>
+        <div class="list" data-rows>${skeletonRows()}</div>
         <div data-empty hidden>${empty("Nenhum lançamento encontrado.", "receipt")}</div>
         <button class="btn mt-4 w-full" data-more hidden>Carregar mais</button>
       </div>
@@ -98,8 +99,9 @@ export async function render(el, { query }) {
   };
 
   async function load(append = false) {
-    const data = await api.get("installments/", { ...params(), page });
     const rows = $("[data-rows]");
+    rows.classList.add("is-loading");
+    const data = await api.get("installments/", { ...params(), page }).finally(() => rows.classList.remove("is-loading"));
     const markup = data.results.map(rowHtml).join("");
     if (append) rows.insertAdjacentHTML("beforeend", markup);
     else {
@@ -173,9 +175,11 @@ export async function render(el, { query }) {
     filterForm.month_from.value = filterForm.month_to.value = "";
     apply();
   });
-  $("[data-more]").addEventListener("click", () => {
+  $("[data-more]").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
     page += 1;
-    load(true);
+    setButtonLoading(button, true);
+    await load(true).finally(() => setButtonLoading(button, false));
   });
   $("[data-new]").addEventListener("click", async () => {
     await openExpenseForm();

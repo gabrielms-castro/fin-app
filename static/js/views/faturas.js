@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { skeletonRows } from "../components/loading.js";
 import { toast } from "../components/modal.js";
 import { addMonths, currentMonth, fmtDate, fmtMonth, html, money } from "../format.js";
 import { icon } from "../icons.js";
@@ -31,7 +32,7 @@ export async function render(el, { params, query }) {
     </div>
     <div class="stack">
       <div class="card"><h2 class="card-title">Faturas</h2><div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" data-timeline></div></div>
-      <div class="card" data-invoice></div>
+      <div class="card" data-invoice>${skeletonRows(3)}</div>
     </div>`;
 
   el.querySelector("[data-edit]").addEventListener("click", async () => {
@@ -50,6 +51,16 @@ export async function render(el, { params, query }) {
   });
 
   async function load() {
+    const box = el.querySelector("[data-invoice]");
+    box.classList.add("is-loading");
+    try {
+      await loadInvoice(box);
+    } finally {
+      box.classList.remove("is-loading");
+    }
+  }
+
+  async function loadInvoice(box) {
     setQuery({ month });
     const invoices = await api.get("invoices/", {
       card: card.id,
@@ -74,7 +85,6 @@ export async function render(el, { params, query }) {
     timeline.querySelector(".bg-indigo-600")?.scrollIntoView({ inline: "center", block: "nearest" });
 
     const invoice = invoices.find((i) => i.competence.startsWith(month));
-    const box = el.querySelector("[data-invoice]");
     if (!invoice) {
       box.innerHTML = html`${empty(`Sem fatura em ${fmtMonth(`${month}-01`)}.`, "receipt")}`;
       return;
