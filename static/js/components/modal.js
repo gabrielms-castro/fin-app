@@ -1,5 +1,6 @@
 import { html, raw } from "../format.js";
 import { icon } from "../icons.js";
+import { setButtonLoading } from "./loading.js";
 
 const root = () => document.getElementById("modal-root");
 
@@ -9,9 +10,9 @@ const root = () => document.getElementById("modal-root");
  */
 export function openModal({ title, content, submitLabel = "Salvar", onSubmit, onOpen, danger = false }) {
   const wrapper = document.createElement("div");
-  wrapper.className = "fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/50 backdrop-blur-[2px] sm:items-center sm:p-4";
+  wrapper.className = "motion-safe:animate-fade-in fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/50 backdrop-blur-[2px] sm:items-center sm:p-4";
   wrapper.innerHTML = html`
-    <form class="flex h-full w-full flex-col bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:max-w-xl sm:rounded-2xl dark:bg-slate-900" role="dialog" aria-modal="true" aria-label="${title}" novalidate>
+    <form class="motion-safe:animate-pop-in flex h-full w-full flex-col bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:max-w-xl sm:rounded-2xl dark:bg-slate-900" role="dialog" aria-modal="true" aria-label="${title}" novalidate>
       <header class="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
         <h2 class="text-base font-semibold">${title}</h2>
         <button type="button" class="btn-icon" data-close aria-label="Fechar">${icon("x", "size-5")}</button>
@@ -47,14 +48,14 @@ export function openModal({ title, content, submitLabel = "Salvar", onSubmit, on
       return;
     }
     const button = form.querySelector('[type="submit"]');
-    button.disabled = true;
+    setButtonLoading(button, true);
     try {
       const keepOpen = await onSubmit(form);
       if (keepOpen !== true) close();
     } catch (err) {
       showErrors(form, err);
     } finally {
-      button.disabled = false;
+      setButtonLoading(button, false);
     }
   });
 
