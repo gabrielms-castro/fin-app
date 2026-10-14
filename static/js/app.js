@@ -1,4 +1,5 @@
 import { destroyCharts } from "./components/charts.js";
+import { skeletonPage } from "./components/loading.js";
 import { toast } from "./components/modal.js";
 import { dispatch, fallback, navigate, parseHash, route } from "./router.js";
 import { loadMeta, refresh, store } from "./state.js";
@@ -20,13 +21,18 @@ function mount(view) {
   return async (ctx) => {
     destroyCharts();
     const container = document.createElement("div");
+    container.className = "motion-safe:animate-fade-in";
     app.replaceChildren(container);
+    // Esqueleto só se a view ainda não desenhou nada (evita piscar em páginas rápidas).
+    const skeleton = setTimeout(() => container.childElementCount || (container.innerHTML = skeletonPage()), 120);
     try {
       await view.render(container, ctx);
     } catch (err) {
       console.error(err);
       container.innerHTML = '<div class="card empty">Não foi possível carregar esta página.</div>';
       toast(err.message || "Erro inesperado", true);
+    } finally {
+      clearTimeout(skeleton);
     }
   };
 }
