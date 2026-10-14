@@ -5,7 +5,7 @@
   <title>Entrar · Fin App</title>
 </head>
 <body class="grid min-h-screen place-items-center p-4">
-  <form method="post" class="card w-full max-w-sm space-y-4">
+  <form method="post" class="card w-full max-w-sm space-y-4 motion-safe:animate-fade-up" data-loading>
     {% csrf_token %}
     <div class="flex items-center gap-3">
       <span class="grid size-10 place-items-center rounded-xl bg-indigo-600 text-white"><i data-lucide="wallet" class="size-5"></i></span>
@@ -15,7 +15,7 @@
     <label class="field">Usuário<input class="input" name="username" autocomplete="username" required autofocus></label>
     <label class="field">Senha<input class="input" name="password" type="password" autocomplete="current-password" required></label>
     <input type="hidden" name="next" value="{{ next|default:'/' }}">
-    <button class="btn btn-primary w-full">Entrar</button>
+    <button class="btn btn-primary w-full" data-loading-label="Entrando…">Entrar</button>
   </form>
   <script>lucide.createIcons();</script>
 </body>

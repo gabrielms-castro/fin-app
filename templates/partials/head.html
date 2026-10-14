@@ -97,3 +97,21 @@
     .loading-bar > div { @apply h-full w-full origin-left animate-progress bg-indigo-500; }
   }
 </style>
+<script>
+  // Formulários server-side (login, troca de senha): spinner no botão ao enviar.
+  document.addEventListener("submit", (e) => {
+    const button = e.target.matches("form[data-loading]") && e.target.querySelector("button:not([type=button])");
+    if (!button || e.defaultPrevented) return;
+    button.dataset.label = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = `<span class="spinner" aria-hidden="true"></span>${button.dataset.loadingLabel || button.textContent}`;
+  });
+  // Ao voltar pelo histórico (bfcache) o botão ficaria travado.
+  window.addEventListener("pageshow", () => {
+    document.querySelectorAll("form[data-loading] button[data-label]").forEach((b) => {
+      b.innerHTML = b.dataset.label;
+      b.disabled = false;
+      delete b.dataset.label;
+    });
+  });
+</script>
