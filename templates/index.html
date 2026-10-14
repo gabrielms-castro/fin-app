@@ -6,6 +6,7 @@
 </head>
 <body>
   {% load static %}
+  <div id="loading-bar" class="loading-bar" role="progressbar" aria-label="Carregando" hidden><div></div></div>
   <div class="min-h-screen md:grid md:grid-cols-[240px_minmax(0,1fr)]">
     <aside class="sticky top-0 hidden h-screen flex-col gap-1 border-r border-slate-200 bg-white px-3 py-5 md:flex dark:border-slate-800 dark:bg-slate-900" aria-label="Menu principal">
       <div class="mb-5 flex items-center gap-2 px-3 text-lg font-bold">
@@ -32,7 +33,14 @@
       </div>
     </aside>
 
-    <main id="app" class="mx-auto w-full max-w-6xl px-4 pt-5 pb-28 outline-none md:px-8 md:pt-8 md:pb-10" tabindex="-1"></main>
+    <main id="app" class="mx-auto w-full max-w-6xl px-4 pt-5 pb-28 outline-none md:px-8 md:pt-8 md:pb-10" tabindex="-1">
+      <div class="grid min-h-[60vh] place-items-center" role="status">
+        <div class="flex flex-col items-center gap-3 text-sm muted">
+          <span class="spinner size-8 border-[3px] text-indigo-600 dark:text-indigo-400"></span>
+          Carregando suas finanças…
+        </div>
+      </div>
+    </main>
   </div>
 
   <nav class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 items-center border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-900/95" aria-label="Menu">

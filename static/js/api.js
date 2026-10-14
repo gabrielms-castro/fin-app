@@ -1,3 +1,5 @@
+import { trackRequest } from "./components/loading.js";
+
 function csrfToken() {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : "";
@@ -29,7 +31,11 @@ function buildUrl(path, params) {
   return url;
 }
 
-async function request(method, path, { params, body } = {}) {
+function request(method, path, options) {
+  return trackRequest(send(method, path, options));
+}
+
+async function send(method, path, { params, body } = {}) {
   const response = await fetch(buildUrl(path, params), {
     method,
     credentials: "same-origin",
