@@ -9,7 +9,7 @@ import { kindLabel, methodLabel, store } from "../state.js";
 import { editDelete, empty, iconButton, monthNav, pageHead, statusBadge } from "../ui.js";
 import { openExpenseForm } from "./expense-form.js";
 
-const FILTER_KEYS = ["search", "month", "month_from", "month_to", "payment_method", "card", "block", "nature", "category", "kind", "paid"];
+const FILTER_KEYS = ["search", "month", "month_from", "month_to", "payment_method", "card", "block", "nature", "category", "kind", "paid", "parcelado"];
 const OWN_TAB = {
   divida: { href: "#/dividas", title: "Gerenciar em Dívidas" },
   investimento: { href: "#/investimentos", title: "Gerenciar em Investimentos" },
@@ -32,6 +32,7 @@ export async function render(el, { query }) {
     { name: "category", label: "Grupo", type: "select", empty: "Todos", options: options(store.categories) },
     { name: "kind", label: "Tipo", type: "select", empty: "Todos", options: store.meta.expense_kinds },
     { name: "paid", label: "Status", type: "select", empty: "Todos", options: [{ value: "true", label: "Pago" }, { value: "false", label: "Pendente" }] },
+    { name: "parcelado", label: "Parcelamento", type: "select", empty: "Todos", options: [{ value: "true", label: "Só parceladas (2x+)" }, { value: "false", label: "À vista" }] },
   ];
   const activeCount = () => FILTER_KEYS.filter((k) => state[k] && k !== "month").length;
 
@@ -107,7 +108,7 @@ export async function render(el, { query }) {
     else {
       rows.innerHTML = markup;
       $("[data-totals]").innerHTML = html`
-        <span class="muted">${data.count} parcelas</span>
+        <span class="muted">${state.parcelado === "true" ? `${data.count} parcela(s) de compras parceladas` : `${data.count} parcelas`}</span>
         <span>Total <b class="num">${money(data.totals.total)}</b></span>
         <span class="pos">Pago <b class="num">${money(data.totals.paid)}</b></span>
         <span class="neg">Pendente <b class="num">${money(data.totals.pending)}</b></span>`;

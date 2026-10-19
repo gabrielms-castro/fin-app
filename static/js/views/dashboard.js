@@ -17,13 +17,14 @@ const COMMITMENT = {
 
 function commitmentCard(c, month) {
   const style = COMMITMENT[c.status];
+  const link = `#/lancamentos?month=${month}&parcelado=true`;
   const fill = Number(c.ceiling_amount) ? Math.min((c.committed / c.ceiling_amount) * 100, 100) : c.committed ? 100 : 0;
   return html`<div class="card">
     <h2 class="card-title">Parcelados no mês
       <span class="flex items-center gap-2"><span class="badge ${style.badge}">${style.label}</span>
       <a href="#/config" class="text-xs font-medium text-indigo-600 dark:text-indigo-400">ajustar teto</a></span></h2>
     <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-      <div><div class="num text-2xl font-bold">${money(c.committed)}</div>
+      <div><a href="${link}" class="num text-2xl font-bold hover:text-indigo-600 dark:hover:text-indigo-400" title="Ver compras parceladas">${money(c.committed)}</a>
         <div class="text-xs muted">${pct(Number(c.pct))} da entrada esperada em parcelas</div></div>
       <div class="sm:text-right"><div class="num text-sm font-semibold">teto ${pct(Number(c.ceiling_pct))} · ${money(c.ceiling_amount)}</div>
         ${c.status === "over"
@@ -31,7 +32,10 @@ function commitmentCard(c, month) {
           : html`<div class="text-xs muted">${money(c.ceiling_amount - c.committed)} de folga</div>`}</div>
     </div>
     <div class="progress ${style.bar} mt-3"><div style="width:${fill}%"></div></div>
-    <a href="#/lancamentos?month=${month}" class="mt-2 inline-block text-xs muted hover:text-indigo-600 dark:hover:text-indigo-400">Compras parceladas (2x ou mais), em qualquer forma de pagamento</a>
+    <div class="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+      <span class="text-xs muted">Compras parceladas (2x ou mais), em qualquer forma de pagamento</span>
+      <a href="${link}" class="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">Ver compras parceladas${icon("arrow-up-right", "size-3.5")}</a>
+    </div>
   </div>`;
 }
 

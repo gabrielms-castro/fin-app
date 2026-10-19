@@ -1,6 +1,7 @@
 import django_filters as filters
 
 from .models import Expense, Income, Installment, InvestmentMovement, Invoice, PaymentMethod
+from .services.budget import INSTALLMENT_PURCHASE
 from .services.dates import add_months, parse_month
 
 
@@ -34,6 +35,8 @@ class InstallmentFilter(filters.FilterSet):
     expense = filters.NumberFilter(field_name="expense")
     invoice = filters.NumberFilter(field_name="invoice")
     paid = filters.BooleanFilter()
+    # Mesmo critério do teto de parcelados do dashboard.
+    parcelado = filters.BooleanFilter(method="filter_parcelado")
     min_amount = filters.NumberFilter(field_name="amount", lookup_expr="gte")
     max_amount = filters.NumberFilter(field_name="amount", lookup_expr="lte")
 
@@ -44,6 +47,11 @@ class InstallmentFilter(filters.FilterSet):
     def filter_month(self, qs, name, value):
         month = parse_month(value)
         return qs.filter(competence=month) if month else qs
+
+    def filter_parcelado(self, qs, name, value):
+        if value is None:
+            return qs
+        return qs.filter(INSTALLMENT_PURCHASE) if value else qs.exclude(INSTALLMENT_PURCHASE)
 
 
 class ExpenseFilter(filters.FilterSet):

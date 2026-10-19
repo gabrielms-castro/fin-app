@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 
 from finance.models import Category, Expense
 
-from .factories import card, expense, make_user
+from .factories import card, category, expense, make_user
 
 
 class ApiTests(TestCase):
@@ -120,3 +120,15 @@ class ApiTests(TestCase):
         self.assertEqual((r.data["nature_name"], r.data["block_name"]), ("Discricionário", "Estilo de vida"))
         inst = self.client.get("/api/installments/", {"block": lazer.nature.block_id}).data
         self.assertEqual(inst["count"], 1)
+
+    def test_parcelado_filter_matches_dashboard_commitment(self):
+        expense(self.user, "900", date(2026, 10, 3), "boleto", 3, description="TV")
+        expense(self.user, "50", date(2026, 10, 3), "pix", description="Mercado")
+        expense(self.user, "4000", date(2026, 10, 3), "boleto", 4, kind=Expense.DEBT,
+                category=category(self.user, "Empréstimos e financiamentos"))
+        data = self.client.get("/api/installments/", {"month": "2026-10", "parcelado": "true"}).data
+        self.assertEqual([r["description"] for r in data["results"]], ["TV"])
+        committed = self.client.get("/api/dashboard/", {"month": "2026-10"}).data["installments_commitment"]["committed"]
+        self.assertEqual(data["totals"]["total"], committed)
+        rest = self.client.get("/api/installments/", {"month": "2026-10", "parcelado": "false"}).data
+        self.assertEqual(sorted(r["description"] for r in rest["results"]), ["Compra", "Mercado"])

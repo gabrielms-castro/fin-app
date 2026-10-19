@@ -26,6 +26,9 @@ ZERO = Decimal("0")
 CENT = Decimal("0.01")
 # A partir de 80% do teto de parcelados o status vira "atenção".
 WARNING_RATIO = Decimal("0.8")
+# Compras parceladas (2x ou mais), em qualquer forma de pagamento; dívidas ficam de fora
+# (são acompanhadas na aba Dívidas).
+INSTALLMENT_PURCHASE = Q(expense__installments_count__gt=1) & ~Q(expense__kind=Expense.DEBT)
 
 
 def expected_income(user, month):
@@ -39,15 +42,8 @@ def expected_income(user, month):
 
 
 def installments_committed(user, months, exclude_expense=None):
-    """Soma das parcelas de compras parceladas (2x ou mais) por competência.
-
-    Vale qualquer forma de pagamento e grupo de gasto; dívidas ficam de fora
-    (são acompanhadas na aba Dívidas).
-    """
-    qs = (
-        Installment.objects.filter(user=user, competence__in=months, expense__installments_count__gt=1)
-        .exclude(expense__kind=Expense.DEBT)
-    )
+    """Soma das parcelas de compras parceladas por competência."""
+    qs = Installment.objects.filter(INSTALLMENT_PURCHASE, user=user, competence__in=months)
     if exclude_expense:
         qs = qs.exclude(expense_id=exclude_expense)
     return {row["competence"]: row["t"] for row in qs.values("competence").annotate(t=Sum("amount"))}
