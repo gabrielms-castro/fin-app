@@ -1,3 +1,4 @@
+import { api } from "./api.js";
 import { destroyCharts } from "./components/charts.js";
 import { skeletonPage } from "./components/loading.js";
 import { toast } from "./components/modal.js";
@@ -13,6 +14,7 @@ import * as faturas from "./views/faturas.js";
 import * as investimentos from "./views/investimentos.js";
 import * as lancamentos from "./views/lancamentos.js";
 import * as metas from "./views/metas.js";
+import { openOnboarding } from "./views/onboarding.js";
 import * as receitas from "./views/receitas.js";
 import * as recorrentes from "./views/recorrentes.js";
 
@@ -66,7 +68,11 @@ async function onRoute() {
 
 document.addEventListener("click", async (e) => {
   const action = e.target.closest("[data-action]")?.dataset.action;
-  if (action === "quick-add") {
+  if (action === "onboarding") {
+    await api.post("settings/onboarding/reset/");
+    await openOnboarding();
+    dispatch();
+  } else if (action === "quick-add") {
     await openExpenseForm();
     dispatch();
   } else if (action === "more-menu") {
@@ -85,7 +91,11 @@ async function start() {
   if (!store.categories.length) toast("Configure blocos, naturezas e grupos em Configurações.");
   window.addEventListener("hashchange", onRoute);
   if (!location.hash) history.replaceState(null, "", "#/dashboard");
-  onRoute();
+  await onRoute();
+  if (store.meta.onboarding_pending) {
+    await openOnboarding();
+    dispatch();
+  }
 }
 
 start();

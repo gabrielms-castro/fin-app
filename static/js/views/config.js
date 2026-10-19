@@ -79,7 +79,8 @@ export async function render(container) {
   el.innerHTML = html`
     ${pageHead(
       "Configurações",
-<button class="btn" data-apply-defaults>${icon("sparkles")}Aplicar estrutura 50/30/20</button>`
+      html`<button class="btn" data-action="onboarding">${icon("wand-sparkles")}Refazer configuração inicial</button>
+        <button class="btn" data-apply-defaults>${icon("sparkles")}Aplicar estrutura 50/30/20</button>`
     )}
     <div class="stack">
       <div class="card">
