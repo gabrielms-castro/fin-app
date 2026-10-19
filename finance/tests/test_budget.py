@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
-from finance.models import Block, Expense, MonthPlan, RecurringExpense
+from finance.models import Block, Expense, MonthPlan, RecurringExpense, UserSettings
 from finance.services import budget
 from finance.services.recurring import materialize
 
@@ -106,3 +106,54 @@ class BudgetTests(TestCase):
         self.assertEqual(next_charge(sub), date(2026, 11, 5))  # dia 5 já passou em 10/10
         sub.day = 15
         self.assertEqual(next_charge(sub), date(2026, 10, 15))
+
+
+class InstallmentsCommitmentTests(TestCase):
+    """Teto de parcelados: % da entrada esperada comprometido com compras de 2x ou mais."""
+
+    OCT = date(2026, 10, 1)
+
+    def setUp(self):
+        self.user = make_user()
+        MonthPlan.objects.create(user=self.user, competence=self.OCT, expected_income=Decimal("10000"))
+
+    def commitment(self):
+        return budget.installments_commitment(self.user, self.OCT)
+
+    def test_single_payment_does_not_count(self):
+        expense(self.user, "900", date(2026, 10, 3), "pix")
+        self.assertEqual(self.commitment()["committed"], Decimal("0"))
+
+    def test_counts_only_installment_of_the_month(self):
+        expense(self.user, "900", date(2026, 10, 3), "boleto", 3)  # out, nov, dez
+        c = self.commitment()
+        self.assertEqual(c["committed"], Decimal("300"))
+        self.assertEqual(c["pct"], Decimal("3.00"))
+        self.assertEqual(c["ceiling_amount"], Decimal("3000.00"))
+        self.assertEqual(c["status"], "ok")
+
+    def test_debts_do_not_count(self):
+        expense(self.user, "3000", date(2026, 10, 3), "boleto", 3, kind=Expense.DEBT,
+                category=category(self.user, "Empréstimos e financiamentos"))
+        self.assertEqual(self.commitment()["committed"], Decimal("0"))
+
+    def test_zero_income_does_not_break(self):
+        MonthPlan.objects.filter(user=self.user).update(expected_income=0)
+        self.assertEqual(self.commitment(), {
+            "committed": Decimal("0"), "pct": Decimal("0"), "ceiling_pct": Decimal("30"),
+            "ceiling_amount": Decimal("0"), "excess": Decimal("0"), "status": "ok",
+        })
+        expense(self.user, "200", date(2026, 10, 3), "pix", 2)
+        self.assertEqual(self.commitment()["status"], "over")
+
+    def test_status_thresholds(self):
+        expense(self.user, "5400", date(2026, 10, 3), "pix", 2)  # 2700/mês = 27% (teto 30%)
+        c = self.commitment()
+        self.assertEqual((c["pct"], c["status"]), (Decimal("27.00"), "warning"))
+        UserSettings.objects.filter(user=self.user).update(installment_ceiling_pct=25)
+        c = self.commitment()
+        self.assertEqual((c["status"], c["excess"]), ("over", Decimal("200.00")))
+
+    def test_month_summary_includes_commitment(self):
+        summary = budget.month_summary(self.user, self.OCT)
+        self.assertEqual(summary["installments_commitment"]["status"], "ok")

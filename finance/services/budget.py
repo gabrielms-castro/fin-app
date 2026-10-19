@@ -16,12 +16,16 @@ from ..models import (
     Nature,
     PaymentMethod,
     RecurringExpense,
+    get_settings,
 )
 from .dates import add_months, iter_months, month_start, today
 from .investments import investments_summary
 from .recurring import materialize, monthly_equivalent, virtual_occurrences
 
 ZERO = Decimal("0")
+CENT = Decimal("0.01")
+# A partir de 80% do teto de parcelados o status vira "atenção".
+WARNING_RATIO = Decimal("0.8")
 
 
 def expected_income(user, month):
@@ -32,6 +36,48 @@ def expected_income(user, month):
         Q(end_month__isnull=True) | Q(end_month__gte=month)
     )
     return sources.aggregate(t=Sum("amount"))["t"] or ZERO
+
+
+def installments_committed(user, months, exclude_expense=None):
+    """Soma das parcelas de compras parceladas (2x ou mais) por competência.
+
+    Vale qualquer forma de pagamento e grupo de gasto; dívidas ficam de fora
+    (são acompanhadas na aba Dívidas).
+    """
+    qs = (
+        Installment.objects.filter(user=user, competence__in=months, expense__installments_count__gt=1)
+        .exclude(expense__kind=Expense.DEBT)
+    )
+    if exclude_expense:
+        qs = qs.exclude(expense_id=exclude_expense)
+    return {row["competence"]: row["t"] for row in qs.values("competence").annotate(t=Sum("amount"))}
+
+
+def commitment(committed, income, ceiling_pct):
+    """Compara o comprometido com parcelados ao teto (% da entrada esperada)."""
+    ceiling_amount = (income * ceiling_pct / 100).quantize(CENT)
+    if not committed:
+        status = "ok"
+    elif committed > ceiling_amount:
+        status = "over"
+    elif committed >= ceiling_amount * WARNING_RATIO:
+        status = "warning"
+    else:
+        status = "ok"
+    return {
+        "committed": committed,
+        "pct": (committed / income * 100).quantize(CENT) if income else ZERO,
+        "ceiling_pct": ceiling_pct,
+        "ceiling_amount": ceiling_amount,
+        "excess": max(committed - ceiling_amount, ZERO),
+        "status": status,
+    }
+
+
+def installments_commitment(user, month):
+    month = month_start(month)
+    committed = installments_committed(user, [month]).get(month, ZERO)
+    return commitment(committed, expected_income(user, month), get_settings(user).installment_ceiling_pct)
 
 
 def _pct(part, whole):
@@ -148,6 +194,7 @@ def month_summary(user, month):
             if k and v and k in cards
         ],
         "invoices": invoices,
+        "installments_commitment": installments_commitment(user, month),
         "debts": debts_summary(user),
         "subscriptions": subscriptions_summary(user),
         "investments": investments_summary(user, month),

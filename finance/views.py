@@ -1,4 +1,5 @@
 import csv
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -254,9 +255,28 @@ class ExpenseViewSet(OwnedViewSet):
             start = expense.first_due_date or expense.date
             months = [month_start(add_months(start, i)) for i in range(count)]
         return Response(
-            {"installments": [{"number": i + 1, "amount": a, "competence": m}
-                              for i, (a, m) in enumerate(zip(amounts, months))]}
+            {
+                "installments": [{"number": i + 1, "amount": a, "competence": m}
+                                 for i, (a, m) in enumerate(zip(amounts, months))],
+                "commitment": self._commitment_preview(expense, amounts, months),
+            }
         )
+
+    def _commitment_preview(self, expense, amounts, months):
+        """Como fica o teto de parcelados em cada mês afetado se a compra for salva."""
+        if expense.installments_count < 2 or expense.kind == Expense.DEBT:
+            return []
+        user = self.request.user
+        ceiling = get_settings(user).installment_ceiling_pct
+        # Ao editar, as parcelas atuais do próprio lançamento não contam em dobro.
+        committed = budget.installments_committed(user, months, exclude_expense=self.request.data.get("id"))
+        added = defaultdict(lambda: Decimal("0"))
+        for amount, month in zip(amounts, months):
+            added[month] += amount
+        return [
+            {"month": m, **budget.commitment(committed.get(m, Decimal("0")) + total, budget.expected_income(user, m), ceiling)}
+            for m, total in added.items()
+        ]
 
 
 class RecurringExpenseViewSet(OwnedViewSet):

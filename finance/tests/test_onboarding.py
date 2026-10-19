@@ -50,6 +50,36 @@ class SettingsApiTests(TestCase):
         self.assertTrue(self.client.get("/api/settings/").data["onboarding_pending"])
 
 
+class ExpensePreviewCommitmentTests(TestCase):
+    def setUp(self):
+        self.user = make_user()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        for month in (10, 11):
+            MonthPlan.objects.create(user=self.user, competence=date(2026, month, 1), expected_income=Decimal("1000"))
+        self.category = Category.objects.get(user=self.user, name="Vestuário").id
+
+    def preview(self, **data):
+        body = {"description": "X", "date": "2026-10-03", "payment_method": "pix", "category": self.category, **data}
+        return self.client.post("/api/expenses/preview/", body, format="json").data["commitment"]
+
+    def test_warns_per_affected_month(self):
+        rows = self.preview(total_amount="800", installments_count=2)
+        self.assertEqual([r["month"] for r in rows], [date(2026, 10, 1), date(2026, 11, 1)])
+        self.assertEqual((rows[0]["status"], rows[0]["excess"]), ("over", Decimal("100.00")))
+
+    def test_single_payment_has_no_commitment(self):
+        self.assertEqual(self.preview(total_amount="800"), [])
+
+    def test_editing_does_not_double_count(self):
+        r = self.client.post("/api/expenses/", {
+            "description": "X", "date": "2026-10-03", "payment_method": "pix", "category": self.category,
+            "total_amount": "400", "installments_count": 2,
+        }, format="json")
+        rows = self.preview(id=r.data["id"], total_amount="400", installments_count=2)
+        self.assertEqual(rows[0]["committed"], Decimal("200"))
+
+
 class BackfillTests(TestCase):
     def test_signal_creates_settings(self):
         user = get_user_model().objects.create_user("novo", password="senha-forte-123")
