@@ -314,3 +314,47 @@ class InvestmentMovement(Owned):
 
     def __str__(self):
         return f"{self.get_kind_display()} {self.investment} {self.amount}"
+
+
+class UserSettings(models.Model):
+    """Preferências do usuário: teto de parcelados e estado do onboarding."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="finance_settings")
+    # % máximo da entrada esperada comprometido com parcelas de compras parceladas.
+    installment_ceiling_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("30"),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
+    onboarding_skipped_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def onboarding_pending(self):
+        return self.onboarding_completed_at is None and self.onboarding_skipped_at is None
+
+    def __str__(self):
+        return f"Configurações de {self.user}"
+
+
+def get_settings(user):
+    return UserSettings.objects.get_or_create(user=user)[0]
+
+
+class Goal(Owned):
+    """Meta financeira (reserva de emergência, viagem…), opcionalmente ligada a um investimento."""
+
+    name = models.CharField(max_length=80)
+    target_amount = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
+    target_date = models.DateField(null=True, blank=True)
+    initial_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    investment = models.ForeignKey(Investment, on_delete=models.SET_NULL, null=True, blank=True, related_name="goals")
+    color = models.CharField(max_length=9, default="#10b981")
+    active = models.BooleanField(default=True)
+    order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "target_date", "id"]
+
+    def __str__(self):
+        return self.name
