@@ -12,6 +12,7 @@ import * as dividas from "./views/dividas.js";
 import * as faturas from "./views/faturas.js";
 import * as investimentos from "./views/investimentos.js";
 import * as lancamentos from "./views/lancamentos.js";
+import * as metas from "./views/metas.js";
 import * as receitas from "./views/receitas.js";
 import * as recorrentes from "./views/recorrentes.js";
 
@@ -44,6 +45,7 @@ route("/cartoes/:id", mount(faturas));
 route("/assinaturas", mount(assinaturas));
 route("/dividas", mount(dividas));
 route("/investimentos", mount(investimentos));
+route("/metas", mount(metas));
 route("/receitas", mount(receitas));
 route("/recorrentes", mount(recorrentes));
 route("/config", mount(config));
