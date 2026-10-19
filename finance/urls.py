@@ -22,6 +22,8 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("projection/", views.projection, name="projection"),
     path("meta/", views.meta, name="meta"),
+    path("settings/", views.user_settings, name="settings"),
+    path("settings/onboarding/<str:step>/", views.onboarding, name="onboarding"),
     path("apply-defaults/", views.apply_defaults, name="apply-defaults"),
     path("", include(router.urls)),
 ]

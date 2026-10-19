@@ -111,3 +111,11 @@ class IsolationTests(TestCase):
             with self.subTest(url=url):
                 self.assertEqual(self.client.post(url, data, format="json").status_code, 400)
 
+
+    def test_settings_are_per_user(self):
+        self.client.patch("/api/settings/", {"installment_ceiling_pct": "10"}, format="json")
+        self.client.post("/api/settings/onboarding/complete/")
+        owner = self.owner.finance_settings
+        owner.refresh_from_db()
+        self.assertEqual(owner.installment_ceiling_pct, Decimal("30"))
+        self.assertTrue(owner.onboarding_pending)

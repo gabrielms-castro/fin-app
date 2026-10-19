@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch, ProtectedError
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
@@ -36,6 +37,7 @@ from .models import (
     Nature,
     PaymentMethod,
     RecurringExpense,
+    get_settings,
 )
 from .services import budget
 from .services.billing import invoice_cycle
@@ -375,6 +377,34 @@ def apply_defaults(request):
     return Response({"detail": "Estrutura padrão aplicada."})
 
 
+@api_view(["GET", "PATCH"])
+def user_settings(request):
+    settings = get_settings(request.user)
+    if request.method == "PATCH":
+        serializer = s.UserSettingsSerializer(settings, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+    return Response(s.UserSettingsSerializer(settings).data)
+
+
+ONBOARDING_ACTIONS = {
+    "complete": {"onboarding_completed_at": "now"},
+    "skip": {"onboarding_skipped_at": "now"},
+    "reset": {"onboarding_completed_at": None, "onboarding_skipped_at": None},
+}
+
+
+@api_view(["POST"])
+def onboarding(request, step):
+    if step not in ONBOARDING_ACTIONS:
+        return Response({"detail": "Ação inválida."}, status=404)
+    settings = get_settings(request.user)
+    for field, value in ONBOARDING_ACTIONS[step].items():
+        setattr(settings, field, timezone.now() if value == "now" else value)
+    settings.save()
+    return Response(s.UserSettingsSerializer(settings).data)
+
+
 @api_view(["GET"])
 def meta(request):
     return Response(
@@ -387,6 +417,7 @@ def meta(request):
             "investment_types": [{"value": v, "label": l} for v, l in Investment.TYPE_CHOICES],
             "movement_kinds": [{"value": v, "label": l} for v, l in InvestmentMovement.KIND_CHOICES],
             "user": request.user.get_username(),
+            "onboarding_pending": get_settings(request.user).onboarding_pending,
             "today": today(),
         }
     )

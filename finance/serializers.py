@@ -17,6 +17,7 @@ from .models import (
     Nature,
     PaymentMethod,
     RecurringExpense,
+    UserSettings,
 )
 from .services.dates import month_start, today
 from .services.investments import investment_stats
@@ -322,3 +323,12 @@ class InvestmentMovementSerializer(OwnedSerializer):
         if kind != InvestmentMovement.YIELD and amount is not None and amount <= 0:
             raise serializers.ValidationError({"amount": "O valor deve ser positivo."})
         return attrs
+
+
+class UserSettingsSerializer(serializers.ModelSerializer):
+    onboarding_pending = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = UserSettings
+        fields = ["installment_ceiling_pct", "onboarding_completed_at", "onboarding_skipped_at", "onboarding_pending"]
+        read_only_fields = ["onboarding_completed_at", "onboarding_skipped_at"]
