@@ -28,6 +28,7 @@ from .models import (
     Category,
     CreditCard,
     Expense,
+    Goal,
     Income,
     IncomeSource,
     Installment,
@@ -357,6 +358,12 @@ class InvestmentViewSet(OwnedViewSet):
             return Response({"value": ["Informe um valor e uma data válidos."]}, status=400)
         set_balance(investment, value, when)
         return Response(self.get_serializer(investment).data)
+
+
+class GoalViewSet(OwnedViewSet):
+    queryset = Goal.objects.select_related("investment")
+    serializer_class = s.GoalSerializer
+    pagination_class = None
 
 
 class InvestmentMovementViewSet(OwnedViewSet):

@@ -7,6 +7,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from finance.models import Category, Goal, Investment, InvestmentMovement, MonthPlan, UserSettings
+from finance.services.goals import goal_progress
 
 from .factories import make_user
 
@@ -48,6 +49,63 @@ class SettingsApiTests(TestCase):
     def test_onboarding_dates_are_read_only_on_patch(self):
         self.client.patch("/api/settings/", {"onboarding_completed_at": "2026-01-01T00:00:00Z"}, format="json")
         self.assertTrue(self.client.get("/api/settings/").data["onboarding_pending"])
+
+
+@patch("finance.services.goals.today", lambda: TODAY)
+@patch("finance.serializers.today", lambda: TODAY)
+class GoalTests(TestCase):
+    def setUp(self):
+        self.user = make_user()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.investment = Investment.objects.create(
+            user=self.user, name="Reserva", category=Category.objects.get(user=self.user, name="Reserva de emergência"),
+        )
+
+    def goal(self, **kwargs):
+        return Goal(user=self.user, name="Meta", target_amount=Decimal("12000"), **kwargs)
+
+    def test_progress_without_investment_or_deadline(self):
+        p = goal_progress(self.goal(initial_amount=Decimal("3000")))
+        self.assertEqual((p["saved"], p["progress_pct"], p["remaining"]), (Decimal("3000"), Decimal("25.00"), Decimal("9000")))
+        self.assertIsNone(p["months_left"])
+        self.assertIsNone(p["suggested_monthly"])
+
+    def test_suggested_monthly_with_deadline(self):
+        p = goal_progress(self.goal(initial_amount=Decimal("3000"), target_date=date(2027, 7, 1)))
+        self.assertEqual((p["months_left"], p["suggested_monthly"]), (9, Decimal("1000.00")))
+
+    def test_deadline_this_month_counts_as_one(self):
+        p = goal_progress(self.goal(target_date=date(2026, 10, 31)))
+        self.assertEqual(p["months_left"], 1)
+
+    def test_progress_uses_investment_balance(self):
+        InvestmentMovement.objects.create(
+            user=self.user, investment=self.investment, kind="aporte", date=TODAY, amount=Decimal("15000"),
+        )
+        p = goal_progress(self.goal(investment=self.investment, initial_amount=Decimal("1"), target_date=date(2027, 1, 1)))
+        self.assertEqual((p["saved"], p["progress_pct"]), (Decimal("15000"), Decimal("100.00")))
+        self.assertEqual((p["remaining"], p["suggested_monthly"]), (Decimal("0"), Decimal("0")))
+
+    def test_api_crud(self):
+        r = self.client.post("/api/goals/", {
+            "name": "Viagem", "target_amount": "6000", "target_date": "2027-04-01", "color": "#abc",
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual((r.data["color"], r.data["suggested_monthly"]), ("#aabbcc", Decimal("1000.00")))
+        goal_id = r.data["id"]
+        self.assertEqual(self.client.patch(f"/api/goals/{goal_id}/", {"active": False}, format="json").status_code, 200)
+        self.assertEqual(self.client.get("/api/goals/").data[0]["active"], False)
+        self.assertEqual(self.client.delete(f"/api/goals/{goal_id}/").status_code, 204)
+
+    def test_rejects_past_deadline_on_create(self):
+        r = self.client.post("/api/goals/", {"name": "X", "target_amount": "10", "target_date": "2026-01-01"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("target_date", r.data)
+
+    def test_rejects_non_positive_target(self):
+        r = self.client.post("/api/goals/", {"name": "X", "target_amount": "0"}, format="json")
+        self.assertEqual(r.status_code, 400)
 
 
 class ExpensePreviewCommitmentTests(TestCase):

@@ -16,6 +16,7 @@ router.register("income-sources", views.IncomeSourceViewSet, basename="income-so
 router.register("incomes", views.IncomeViewSet, basename="income")
 router.register("month-plans", views.MonthPlanViewSet, basename="month-plan")
 router.register("investments", views.InvestmentViewSet, basename="investment")
+router.register("goals", views.GoalViewSet, basename="goal")
 router.register("investment-movements", views.InvestmentMovementViewSet, basename="investment-movement")
 
 urlpatterns = [

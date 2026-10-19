@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from finance.models import (
     Block,
     Category,
+    Goal,
     Income,
     Investment,
     InvestmentMovement,
@@ -47,12 +48,13 @@ class IsolationTests(TestCase):
             user=o, investment=self.investment, kind="aporte", date=date(2026, 10, 6), amount=Decimal("500"),
         )
         sync_expense(self.movement)
+        self.goal = Goal.objects.create(user=o, name="Viagem", target_amount=Decimal("5000"), investment=self.investment)
 
         self.resources = {
             "cards": self.card, "expenses": self.expense, "installments": self.installment,
             "invoices": self.invoice, "recurring": self.recurring, "income-sources": self.source,
             "incomes": self.income, "month-plans": self.plan, "investments": self.investment,
-            "investment-movements": self.movement, "categories": category(o),
+            "investment-movements": self.movement, "goals": self.goal, "categories": category(o),
             "natures": Nature.objects.filter(user=o).first(), "blocks": Block.objects.filter(user=o).first(),
         }
         self.read_only = {"installments", "invoices"}
@@ -103,6 +105,7 @@ class IsolationTests(TestCase):
                 "payment_method": "credito", "card": self.card.pk, "category": mine.pk,
             }),
             ("/api/incomes/", {"date": "2026-10-06", "amount": "10", "description": "X", "source": self.source.pk}),
+            ("/api/goals/", {"name": "X", "target_amount": "10", "investment": self.investment.pk}),
             ("/api/investment-movements/", {
                 "investment": self.investment.pk, "kind": "aporte", "date": "2026-10-06", "amount": "10",
             }),

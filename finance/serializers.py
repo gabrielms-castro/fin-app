@@ -7,6 +7,7 @@ from .models import (
     Category,
     CreditCard,
     Expense,
+    Goal,
     Income,
     IncomeSource,
     Installment,
@@ -20,6 +21,7 @@ from .models import (
     UserSettings,
 )
 from .services.dates import month_start, today
+from .services.goals import goal_progress
 from .services.investments import investment_stats
 from .services.recurring import monthly_equivalent, next_charge
 
@@ -332,3 +334,26 @@ class UserSettingsSerializer(serializers.ModelSerializer):
         model = UserSettings
         fields = ["installment_ceiling_pct", "onboarding_completed_at", "onboarding_skipped_at", "onboarding_pending"]
         read_only_fields = ["onboarding_completed_at", "onboarding_skipped_at"]
+
+
+class GoalSerializer(OwnedSerializer):
+    investment_name = serializers.CharField(source="investment.name", read_only=True, default=None)
+
+    class Meta:
+        model = Goal
+        fields = [
+            "id", "name", "target_amount", "target_date", "initial_amount", "investment", "investment_name",
+            "color", "active", "order",
+        ]
+
+    def to_representation(self, instance):
+        return {**super().to_representation(instance), **goal_progress(instance)}
+
+    def validate_color(self, value):
+        return normalize_color(value)
+
+    def validate_target_date(self, value):
+        unchanged = self.instance is not None and value == self.instance.target_date
+        if value and not unchanged and value < today():
+            raise serializers.ValidationError("O prazo não pode estar no passado.")
+        return value
