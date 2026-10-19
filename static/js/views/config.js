@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { fields, options, readForm } from "../components/form.js";
-import { confirmDialog, openModal, toast } from "../components/modal.js";
+import { setButtonLoading } from "../components/loading.js";
+import { confirmDialog, openModal, showErrors, toast } from "../components/modal.js";
 import { html, money } from "../format.js";
 import { icon } from "../icons.js";
 import { refresh, store } from "../state.js";
@@ -68,7 +69,7 @@ function openForm(resource, item, onSaved, defaults = {}) {
 export async function render(container) {
   const el = document.createElement("div");
   container.replaceChildren(el);
-  await refresh("blocks", "natures", "categories");
+  const [settings] = await Promise.all([api.get("settings/"), refresh("blocks", "natures", "categories")]);
   const reload = () => render(container);
   const percentTotal = store.blocks.filter((b) => b.kind === "percent").reduce((s, b) => s + Number(b.value), 0);
 
@@ -78,9 +79,20 @@ export async function render(container) {
   el.innerHTML = html`
     ${pageHead(
       "Configurações",
-      html`<button class="btn" data-apply-defaults>${icon("sparkles")}Aplicar estrutura 50/30/20</button>`
+<button class="btn" data-apply-defaults>${icon("sparkles")}Aplicar estrutura 50/30/20</button>`
     )}
     <div class="stack">
+      <div class="card">
+        <h2 class="card-title">Teto de parcelados</h2>
+        <form class="flex flex-wrap items-end gap-3" data-ceiling novalidate>
+          <label class="field w-40">% máximo da renda
+            <div class="relative"><input class="input pr-7 text-right" type="number" name="installment_ceiling_pct" min="0" max="100" step="1" inputmode="numeric" value="${Number(settings.installment_ceiling_pct)}" required><span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm muted">%</span></div>
+          </label>
+          <button class="btn btn-primary" type="submit">Salvar</button>
+          <p class="hint basis-full">Soma das parcelas de compras parceladas (2x ou mais) de cada mês, em qualquer forma de pagamento. Dívidas ficam de fora. Acima do teto, o dashboard e o formulário de lançamento avisam.</p>
+        </form>
+      </div>
+
       <div class="card">
         <h2 class="card-title">Blocos do salário
           <button class="btn btn-sm" data-new="blocks">${icon("plus", "size-3.5")}Bloco</button></h2>
@@ -123,6 +135,22 @@ export async function render(container) {
         )}</div>
       </div>
     </div>`;
+
+  el.querySelector("[data-ceiling]").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (!form.reportValidity()) return;
+    const button = form.querySelector("[type=submit]");
+    setButtonLoading(button, true);
+    try {
+      await api.patch("settings/", { installment_ceiling_pct: form.installment_ceiling_pct.value });
+      toast("Teto de parcelados salvo");
+    } catch (err) {
+      showErrors(form, err);
+    } finally {
+      setButtonLoading(button, false);
+    }
+  });
 
   el.addEventListener("click", async (e) => {
     const t = e.target;

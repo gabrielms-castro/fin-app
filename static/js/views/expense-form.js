@@ -49,13 +49,14 @@ export function openExpenseForm({ expense = null, kind = "compra", defaults = {}
         ${field({ name: "notes", label: "Observações", type: "textarea" }, values.notes)}
       </div>
       <div class="flex items-start gap-2 rounded-xl bg-indigo-50 px-3 py-2.5 text-sm text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-200" data-preview hidden></div>
+      <div class="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200" data-ceiling-warning role="status" hidden></div>
     </div>`;
 
   return new Promise((resolve) => {
     openModal({
       title: expense ? "Editar lançamento" : isDebt ? "Nova dívida" : "Novo lançamento",
       content,
-      onOpen: (form) => setup(form, isDebt),
+      onOpen: (form) => setup(form, isDebt, expense?.id),
       onSubmit: async (form) => {
         const data = payload(form, values.kind);
         const saved = expense ? await api.put(`expenses/${expense.id}/`, data) : await api.post("expenses/", data);
@@ -78,12 +79,22 @@ function payload(form, kind) {
   return data;
 }
 
-function setup(form, isDebt) {
+/** Aviso (não bloqueia) quando as parcelas passam do teto de parcelados em algum mês. */
+function ceilingWarning(rows) {
+  const over = rows.filter((r) => r.status === "over");
+  if (!over.length) return null;
+  const shown = over.slice(0, 3).map((r) => html`<b>${fmtMonth(r.month)}</b> (+${money(r.excess)})`);
+  const rest = over.length > 3 ? ` e mais ${over.length - 3} mês(es)` : "";
+  return html`${icon("triangle-alert", "size-4 mt-0.5")}<span>Esta compra passa do seu teto de parcelados (${Number(over[0].ceiling_pct).toLocaleString("pt-BR")}% da renda) em ${shown.reduce((acc, m, i) => html`${acc}${i ? ", " : ""}${m}`, "")}${rest}. Você ainda pode salvar.</span>`;
+}
+
+function setup(form, isDebt, expenseId) {
   const toggle = (name, show) => {
     const label = form.querySelector(`[data-field="${name}"]`);
     if (label) label.hidden = !show;
   };
   const preview = form.querySelector("[data-preview]");
+  const warning = form.querySelector("[data-ceiling-warning]");
   let timer;
 
   const sync = () => {
@@ -103,11 +114,14 @@ function setup(form, isDebt) {
     const data = payload(form, isDebt ? "divida" : "compra");
     const amount = data.total_amount || data.installment_amount;
     if (!amount || !data.date || !data.category || (data.payment_method === "credito" && !data.card)) {
-      preview.hidden = true;
+      preview.hidden = warning.hidden = true;
       return;
     }
     try {
-      const { installments } = await api.post("expenses/preview/", { ...data, description: data.description || "-" });
+      const { installments, commitment } = await api.post("expenses/preview/", { ...data, id: expenseId, description: data.description || "-" });
+      const alert = ceilingWarning(commitment || []);
+      warning.innerHTML = alert || "";
+      warning.hidden = !alert;
       const first = installments[0];
       const last = installments[installments.length - 1];
       const where = data.payment_method === "credito" ? "Cai na fatura de" : "Conta em";
@@ -118,7 +132,7 @@ function setup(form, isDebt) {
       }</span>`;
       preview.hidden = false;
     } catch {
-      preview.hidden = true;
+      preview.hidden = warning.hidden = true;
     }
   };
 
