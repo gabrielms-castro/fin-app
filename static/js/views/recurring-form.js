@@ -50,8 +50,6 @@ const subscriptionCategory = (name) => {
   return (preset && byName(preset[1])) || byName(SUBSCRIPTION_CATEGORY) || activeCategories()[0];
 };
 
-const categoryHint = (c) => (c ? html`Entra em <b>${c.name}</b> · ${c.block_name}` : "");
-
 /** Formulário de conta fixa (kind=conta) ou assinatura (kind=assinatura). */
 export function openRecurringForm(item, kind, onSaved) {
   const isSub = (item?.kind || kind) === "assinatura";
@@ -60,7 +58,8 @@ export function openRecurringForm(item, kind, onSaved) {
     : { kind, frequency: "mensal", day: 10, payment_method: "boleto", active: true, start_month: currentMonth() };
   const values = { ...defaults, ...item };
   if (isSub && !values.category) values.category = subscriptionCategory(values.description)?.id;
-  const currentCategory = () => store.categories.find((c) => String(c.id) === String(values.category));
+  // Na assinatura nova, o grupo segue o serviço digitado até o usuário escolher um.
+  let pickedByUser = Boolean(item);
 
   const content = html`
     ${isSub
@@ -69,7 +68,7 @@ export function openRecurringForm(item, kind, onSaved) {
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
       ${field({ name: "description", label: isSub ? "Serviço" : "Descrição", required: true, full: true, placeholder: isSub ? "Netflix, Spotify, TotalPass…" : "Aluguel, internet, condomínio…", list: isSub ? "subscription-presets" : undefined }, values.description)}
       ${isSub
-        ? html`<input type="hidden" name="category" value="${values.category ?? ""}"><p class="hint -mt-2 sm:col-span-2" data-sub-category>${categoryHint(currentCategory())}</p>`
+        ? html`${categorySelect("category", activeCategories(), values.category)}<p class="hint -mt-2 sm:col-span-2">Sugerido pelo serviço. Troque se for um gasto essencial — ex.: Saúde, Educação.</p>`
         : ""}
       ${field({ name: "amount", label: "Valor", type: "money", required: true, placeholder: "0,00" }, values.amount)}
       ${field({ name: "frequency", label: "Cobrança", type: "seg", options: store.meta.frequencies }, values.frequency)}
@@ -90,10 +89,11 @@ export function openRecurringForm(item, kind, onSaved) {
       const sync = (e) => {
         form.querySelector('[data-field="card"]').hidden = form.querySelector('[name="payment_method"]:checked')?.value !== "credito";
         // O grupo da assinatura acompanha o serviço digitado.
-        if (isSub && e?.target === form.description) {
-          const cat = subscriptionCategory(form.description.value);
-          form.category.value = cat?.id ?? "";
-          form.querySelector("[data-sub-category]").innerHTML = categoryHint(cat);
+        if (isSub && e?.target === form.category && e.isTrusted) pickedByUser = true;
+        if (isSub && !pickedByUser && e?.target === form.description) {
+          form.category.value = subscriptionCategory(form.description.value)?.id ?? "";
+          // Avisa o seletor para atualizar natureza e bloco.
+          form.category.dispatchEvent(new Event("change", { bubbles: true }));
         }
       };
       form.addEventListener("input", sync);
