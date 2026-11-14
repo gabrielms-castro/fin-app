@@ -1,19 +1,15 @@
 import { api } from "../api.js";
 import { fields, options, readForm } from "../components/form.js";
 import { setButtonLoading, skeletonRows } from "../components/loading.js";
-import { confirmDialog, toast } from "../components/modal.js";
+import { openExpenseDetail } from "../components/expense-detail.js";
 import { addMonths, currentMonth, fmtDate, fmtMonth, fmtMonthLong, html, money } from "../format.js";
 import { icon } from "../icons.js";
 import { setQuery } from "../router.js";
 import { kindLabel, methodLabel, store } from "../state.js";
-import { editDelete, empty, iconButton, monthNav, pageHead, statusBadge } from "../ui.js";
+import { PARCEL_TABS, empty, iconButton, monthNav, pageHead, segmented, setSegmented, statusBadge } from "../ui.js";
 import { openExpenseForm } from "./expense-form.js";
 
 const FILTER_KEYS = ["search", "month", "month_from", "month_to", "payment_method", "card", "block", "nature", "category", "kind", "paid", "parcelado"];
-const OWN_TAB = {
-  divida: { href: "#/dividas", title: "Gerenciar em Dívidas" },
-  investimento: { href: "#/investimentos", title: "Gerenciar em Investimentos" },
-};
 const METHOD_ICONS = { credito: "credit-card", debito: "wallet", pix: "zap", dinheiro: "banknote", boleto: "file-text", transferencia: "arrow-left-right" };
 
 export async function render(el, { query }) {
@@ -32,9 +28,9 @@ export async function render(el, { query }) {
     { name: "category", label: "Grupo", type: "select", empty: "Todos", options: options(store.categories) },
     { name: "kind", label: "Tipo", type: "select", empty: "Todos", options: store.meta.expense_kinds },
     { name: "paid", label: "Status", type: "select", empty: "Todos", options: [{ value: "true", label: "Pago" }, { value: "false", label: "Pendente" }] },
-    { name: "parcelado", label: "Parcelamento", type: "select", empty: "Todos", options: [{ value: "true", label: "Só parceladas (2x+)" }, { value: "false", label: "À vista" }] },
   ];
-  const activeCount = () => FILTER_KEYS.filter((k) => state[k] && k !== "month").length;
+  // "month" e "parcelado" (abas) não contam como filtro do painel.
+  const activeCount = () => FILTER_KEYS.filter((k) => state[k] && k !== "month" && k !== "parcelado").length;
 
   el.innerHTML = html`
     ${pageHead(
@@ -58,6 +54,7 @@ export async function render(el, { query }) {
         </form>
       </details>
       <div class="card">
+        <div class="mb-3">${segmented("parcelado", PARCEL_TABS, state.parcelado || "")}</div>
         <div class="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-sm" data-totals></div>
         <div class="list" data-rows>${skeletonRows()}</div>
         <div data-empty hidden>${empty("Nenhum lançamento encontrado.", "receipt")}</div>
@@ -72,7 +69,7 @@ export async function render(el, { query }) {
   const rowHtml = (i) => {
     const where = i.card_name ? `${methodLabel(i.payment_method)} · ${i.card_name}` : methodLabel(i.payment_method);
     const parcel = i.installments_count > 1 ? ` · ${i.number}/${i.installments_count}` : "";
-    return html`<div class="list-row" data-id="${i.id}" data-expense="${i.expense}" data-paid="${i.paid ? 1 : 0}">
+    return html`<div class="list-row row-click" tabindex="0" role="button" aria-label="Ver detalhes de ${i.description}" data-id="${i.id}" data-expense="${i.expense}" data-paid="${i.paid ? 1 : 0}">
       <span class="hidden size-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500 sm:grid dark:bg-slate-800 dark:text-slate-400">${icon(METHOD_ICONS[i.payment_method] || "receipt", "size-5")}</span>
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -89,12 +86,9 @@ export async function render(el, { query }) {
       </div>
       <div class="flex flex-col items-end gap-1">
         <span class="num font-semibold">${money(i.amount)}</span>
-        <div class="-mr-2 flex">
-          ${i.invoice || i.kind === "investimento" ? "" : iconButton("pay", i.paid ? "undo-2" : "check", i.paid ? "Marcar pendente" : "Marcar pago")}
-          ${OWN_TAB[i.kind]
-            ? html`<a class="btn-icon" href="${OWN_TAB[i.kind].href}" title="${OWN_TAB[i.kind].title}" aria-label="${OWN_TAB[i.kind].title}">${icon("arrow-up-right")}</a>`
-            : editDelete()}
-        </div>
+        ${i.invoice || i.kind === "investimento"
+          ? ""
+          : html`<div class="-mr-2 flex">${iconButton("pay", i.paid ? "undo-2" : "check", i.paid ? "Marcar pendente" : "Marcar pago")}</div>`}
       </div>
     </div>`;
   };
@@ -108,7 +102,7 @@ export async function render(el, { query }) {
     else {
       rows.innerHTML = markup;
       $("[data-totals]").innerHTML = html`
-        <span class="muted">${state.parcelado === "true" ? `${data.count} parcela(s) de compras parceladas` : `${data.count} parcelas`}</span>
+        <span class="muted">${state.parcelado === "true" ? `${data.count} parcela(s) de compras parceladas` : state.parcelado === "false" ? `${data.count} lançamento(s) à vista` : `${data.count} parcelas`}</span>
         <span>Total <b class="num">${money(data.totals.total)}</b></span>
         <span class="pos">Pago <b class="num">${money(data.totals.paid)}</b></span>
         <span class="neg">Pendente <b class="num">${money(data.totals.pending)}</b></span>`;
@@ -160,7 +154,7 @@ export async function render(el, { query }) {
   filterForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const data = readForm(filterForm);
-    FILTER_KEYS.filter((k) => k !== "month").forEach((k) => (state[k] = data[k] ? String(data[k]).replace(/-01$/, "") : ""));
+    FILTER_KEYS.filter((k) => k !== "month" && k !== "parcelado").forEach((k) => (state[k] = data[k] ? String(data[k]).replace(/-01$/, "") : ""));
     if (state.month_from || state.month_to) state.month = "";
     apply();
   });
@@ -186,22 +180,30 @@ export async function render(el, { query }) {
     await openExpenseForm();
     apply();
   });
+  const segmentedEl = $("[data-segmented]");
+  segmentedEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-value]");
+    if (!btn || btn.dataset.value === (state.parcelado || "")) return;
+    state.parcelado = btn.dataset.value;
+    setSegmented(segmentedEl, state.parcelado);
+    apply();
+  });
+
+  const openDetail = (row) => openExpenseDetail({ expenseId: row.dataset.expense, installmentId: row.dataset.id, onChange: apply });
   $("[data-rows]").addEventListener("click", async (e) => {
     const row = e.target.closest("[data-id]");
     if (!row) return;
     if (e.target.closest("[data-pay]")) {
       await api.post(`installments/${row.dataset.id}/pay/`, { paid: row.dataset.paid !== "1" });
       apply();
-    } else if (e.target.closest("[data-edit]")) {
-      const expense = await api.get(`expenses/${row.dataset.expense}/`);
-      await openExpenseForm({ expense });
-      apply();
-    } else if (e.target.closest("[data-del]")) {
-      const ok = await confirmDialog("Excluir este lançamento e todas as suas parcelas?", { okLabel: "Excluir" });
-      if (!ok) return;
-      await api.del(`expenses/${row.dataset.expense}/`);
-      toast("Lançamento excluído");
-      apply();
+    } else if (!e.target.closest("a, button")) {
+      openDetail(row);
+    }
+  });
+  $("[data-rows]").addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.matches("[data-id]")) {
+      e.preventDefault();
+      openDetail(e.target);
     }
   });
 

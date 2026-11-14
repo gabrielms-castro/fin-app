@@ -6,9 +6,10 @@ const root = () => document.getElementById("modal-root");
 
 /**
  * Abre um modal. `content` é HTML; `onSubmit(form)` pode lançar erro para manter aberto.
+ * `footerStart` é HTML extra no início do rodapé (ex.: botão Excluir à esquerda).
  * Retorna { el, close }.
  */
-export function openModal({ title, content, submitLabel = "Salvar", onSubmit, onOpen, danger = false }) {
+export function openModal({ title, content, submitLabel = "Salvar", onSubmit, onOpen, danger = false, footerStart = "", cancelLabel = "Cancelar" }) {
   const wrapper = document.createElement("div");
   wrapper.className = "motion-safe:animate-fade-in fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/50 backdrop-blur-[2px] sm:items-center sm:p-4";
   wrapper.innerHTML = html`
@@ -19,7 +20,8 @@ export function openModal({ title, content, submitLabel = "Salvar", onSubmit, on
       </header>
       <div class="flex-1 overflow-y-auto px-5 py-5">${raw(content)}</div>
       <footer class="flex gap-2 border-t border-slate-200 px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:justify-end sm:pb-4 dark:border-slate-800">
-        <button type="button" class="btn flex-1 sm:flex-none" data-close>Cancelar</button>
+        ${footerStart ? html`<div class="flex flex-1 gap-2 sm:mr-auto sm:flex-none">${raw(footerStart)}</div>` : ""}
+        <button type="button" class="btn flex-1 sm:flex-none" data-close>${cancelLabel}</button>
         ${onSubmit ? html`<button class="btn ${danger ? "btn-danger" : "btn-primary"} flex-1 sm:flex-none" type="submit">${submitLabel}</button>` : ""}
       </footer>
     </form>`;

@@ -35,3 +35,24 @@ export const statusBadge = (paid) =>
 export const blockUsage = (b) => html`
   ${progress(b.pct)}
   <div class="mt-1 text-xs muted">${pct(b.pct)} de ${money(b.budget)}</div>`;
+
+/** Abas segmentadas (botões com aria-pressed). `options`: [{ value, label, count? }]. */
+export const segmented = (name, options, value = "") => html`
+  <div class="segmented" role="group" data-segmented="${name}">${options.map(
+    (o) => html`<button type="button" data-value="${o.value}" aria-pressed="${String(o.value) === String(value ?? "")}">${o.label}${
+      o.count !== undefined ? html`<span class="text-xs muted">${o.count}</span>` : ""
+    }</button>`
+  )}</div>`;
+
+/** Marca o botão ativo de um `segmented`. */
+export const setSegmented = (root, value) =>
+  root.querySelectorAll("[data-value]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.value === String(value ?? ""))));
+
+export const PARCEL_TABS = [
+  { value: "", label: "Geral" },
+  { value: "false", label: "À vista" },
+  { value: "true", label: "Parcelados" },
+];
+
+/** Mesmo critério do backend (INSTALLMENT_PURCHASE): 2+ parcelas e não é dívida. */
+export const isParcelado = (i) => i.installments_count > 1 && i.kind !== "divida";

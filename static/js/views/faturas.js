@@ -1,11 +1,12 @@
 import { api } from "../api.js";
+import { openExpenseDetail } from "../components/expense-detail.js";
 import { skeletonRows } from "../components/loading.js";
 import { toast } from "../components/modal.js";
 import { addMonths, currentMonth, fmtDate, fmtMonth, html, money } from "../format.js";
 import { icon } from "../icons.js";
 import { setQuery } from "../router.js";
 import { refresh, store } from "../state.js";
-import { empty } from "../ui.js";
+import { PARCEL_TABS, empty, isParcelado, segmented, setSegmented } from "../ui.js";
 import { openCardForm } from "./cartoes.js";
 import { openExpenseForm } from "./expense-form.js";
 
@@ -17,6 +18,8 @@ export async function render(el, { params, query }) {
     return;
   }
   let month = query.month || currentMonth();
+  // Aba Geral/À vista/Parcelados: mantida ao trocar de fatura, volta para Geral ao sair da tela.
+  let tab = "";
 
   el.innerHTML = html`
     <div class="page-head">
@@ -89,7 +92,7 @@ export async function render(el, { params, query }) {
       box.innerHTML = html`${empty(`Sem fatura em ${fmtMonth(`${month}-01`)}.`, "receipt")}`;
       return;
     }
-    const items = await api.get("installments/", { invoice: invoice.id, page_size: 500, ordering: "expense__date" });
+    const items = (await api.get("installments/", { invoice: invoice.id, page_size: 500, ordering: "expense__date" })).results;
     box.innerHTML = html`
       <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -101,13 +104,51 @@ export async function render(el, { params, query }) {
           <button class="btn btn-sm mt-2 ${invoice.paid ? "" : "btn-primary"}" data-pay>${icon(invoice.paid ? "undo-2" : "check", "size-3.5")}${invoice.paid ? "Desfazer pagamento" : "Marcar como paga"}</button>
         </div>
       </div>
-      <div class="list">${items.results.map(
-        (i) => html`<div class="list-row">
-          <div class="min-w-0 flex-1"><div class="truncate font-medium">${i.description}${i.installments_count > 1 ? html` <span class="text-xs muted">${i.number}/${i.installments_count}</span>` : ""}</div>
-          <div class="text-xs muted">${fmtDate(i.date)} · ${i.category_name}</div></div>
-          <span class="num font-semibold">${money(i.amount)}</span>
-        </div>`
-      )}</div>`;
+      <div data-tabs></div>
+      <div class="mb-3 text-sm muted" data-subtotal></div>
+      <div class="list" data-items></div>`;
+
+    const parcelados = items.filter(isParcelado);
+    const counts = { "": items.length, true: parcelados.length, false: items.length - parcelados.length };
+    const tabsEl = box.querySelector("[data-tabs]");
+    tabsEl.innerHTML = html`<div class="mb-3">${segmented("parcelado", PARCEL_TABS.map((t) => ({ ...t, count: counts[t.value] })), tab)}</div>`;
+    const drawItems = () => {
+      const shown = tab === "" ? items : items.filter((i) => isParcelado(i) === (tab === "true"));
+      const subtotal = shown.reduce((t, i) => t + Number(i.amount), 0);
+      box.querySelector("[data-subtotal]").innerHTML = html`${shown.length} item(ns) · subtotal <b class="num text-slate-900 dark:text-white">${money(subtotal)}</b>`;
+      box.querySelector("[data-items]").innerHTML = shown.length
+        ? html`${shown.map(
+            (i) => html`<div class="list-row row-click" tabindex="0" role="button" aria-label="Ver detalhes de ${i.description}" data-id="${i.id}" data-expense="${i.expense}">
+              <div class="min-w-0 flex-1"><div class="truncate font-medium">${i.description}${i.installments_count > 1 ? html` <span class="text-xs muted">${i.number}/${i.installments_count}</span>` : ""}</div>
+              <div class="text-xs muted">${fmtDate(i.date)} · ${i.category_name}</div></div>
+              <span class="num font-semibold">${money(i.amount)}</span>
+            </div>`
+          )}`
+        : html`${empty(
+            tab === "true" ? "Nenhuma compra parcelada nesta fatura." : tab === "false" ? "Nenhuma compra à vista nesta fatura." : "Nenhuma compra nesta fatura.",
+            "receipt"
+          )}`;
+    };
+    drawItems();
+    tabsEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-value]");
+      if (!btn) return;
+      tab = btn.dataset.value;
+      setSegmented(tabsEl, tab);
+      drawItems();
+    });
+    const openDetail = (row) => openExpenseDetail({ expenseId: row.dataset.expense, installmentId: row.dataset.id, onChange: load });
+    const list = box.querySelector("[data-items]");
+    list.addEventListener("click", (e) => {
+      const row = e.target.closest("[data-id]");
+      if (row) openDetail(row);
+    });
+    list.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && e.target.matches("[data-id]")) {
+        e.preventDefault();
+        openDetail(e.target);
+      }
+    });
     box.querySelector("[data-pay]").addEventListener("click", async () => {
       await api.post(`invoices/${invoice.id}/${invoice.paid ? "unpay" : "pay"}/`);
       toast(invoice.paid ? "Pagamento desfeito" : "Fatura paga");
