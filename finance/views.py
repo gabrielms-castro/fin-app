@@ -275,7 +275,7 @@ class ExpenseViewSet(OwnedViewSet):
         for amount, month in zip(amounts, months):
             added[month] += amount
         return [
-            {"month": m, **budget.commitment(committed.get(m, Decimal("0")) + total, budget.expected_income(user, m), ceiling)}
+            {"month": m, **budget.commitment(committed.get(m, Decimal("0")) + total, budget.budget_income(user, m)["base"], ceiling)}
             for m, total in added.items()
         ]
 

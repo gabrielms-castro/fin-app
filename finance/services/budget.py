@@ -41,6 +41,39 @@ def expected_income(user, month):
     return sources.aggregate(t=Sum("amount"))["t"] or ZERO
 
 
+def budget_income(user, month):
+    """Base do orçamento do mês: o recebido substitui o esperado, fonte a fonte.
+
+    Fonte com recebimento no mês conta pelo valor recebido; fonte ainda não recebida conta
+    pelo esperado. Recebimentos sem fonte entram como recebido. Com MonthPlan (esperado
+    ajustado à mão), o pendente é o que falta do plano após descontar o esperado das
+    fontes que já caíram.
+    """
+    month = month_start(month)
+    incomes = Income.objects.filter(user=user, date__gte=month, date__lt=add_months(month, 1))
+    received_by_source = {
+        row["source"]: row["t"] for row in incomes.order_by().values("source").annotate(t=Sum("amount"))
+    }
+    received = sum(received_by_source.values(), ZERO)
+    sources = IncomeSource.objects.filter(user=user, active=True, start_month__lte=month).filter(
+        Q(end_month__isnull=True) | Q(end_month__gte=month)
+    )
+    expected_received = expected_pending = ZERO
+    for source in sources:
+        if source.id in received_by_source:
+            expected_received += source.amount
+        else:
+            expected_pending += source.amount
+    plan = MonthPlan.objects.filter(user=user, competence=month).first()
+    if plan:
+        expected = plan.expected_income
+        pending = max(expected - expected_received, ZERO)
+    else:
+        expected = expected_received + expected_pending
+        pending = expected_pending
+    return {"base": received + pending, "received": received, "pending_expected": pending, "expected": expected}
+
+
 def installments_committed(user, months, exclude_expense=None):
     """Soma das parcelas de compras parceladas por competência."""
     qs = Installment.objects.filter(INSTALLMENT_PURCHASE, user=user, competence__in=months)
@@ -73,7 +106,7 @@ def commitment(committed, income, ceiling_pct):
 def installments_commitment(user, month):
     month = month_start(month)
     committed = installments_committed(user, [month]).get(month, ZERO)
-    return commitment(committed, expected_income(user, month), get_settings(user).installment_ceiling_pct)
+    return commitment(committed, budget_income(user, month)["base"], get_settings(user).installment_ceiling_pct)
 
 
 def _pct(part, whole):
@@ -128,13 +161,8 @@ def month_summary(user, month):
     by_method = grouped("expense__payment_method", "payment_method")
     by_card = grouped("expense__card", "card_id")
 
-    expected = expected_income(user, month)
-    received = (
-        Income.objects.filter(user=user, date__year=month.year, date__month=month.month).aggregate(
-            t=Sum("amount")
-        )["t"]
-        or ZERO
-    )
+    income = budget_income(user, month)
+    base, received = income["base"], income["received"]
     spent = sum(by_block.values(), ZERO)
     pending = installments.filter(paid=False).aggregate(t=Sum("amount"))["t"] or ZERO
     pending += sum((v["amount"] for v in virtual), ZERO)
@@ -162,13 +190,15 @@ def month_summary(user, month):
 
     return {
         "month": month,
-        "expected_income": expected,
+        "expected_income": income["expected"],
+        "budget_base": base,
+        "pending_income": income["pending_expected"],
         "received": received,
         "spent": spent,
         "pending": pending,
-        "balance_expected": expected - spent,
+        "balance_expected": base - spent,
         "balance_received": received - spent,
-        "blocks": _with_natures(_block_rows(Block.objects.filter(user=user), expected, by_block), natures, by_nature),
+        "blocks": _with_natures(_block_rows(Block.objects.filter(user=user), base, by_block), natures, by_nature),
         "by_nature": [
             {"id": n.id, "name": n.name, "total": by_nature[n.id]} for n in natures if by_nature.get(n.id)
         ],
@@ -265,7 +295,8 @@ def projection(user, months=12, start=None):
 
     result = []
     for month in iter_months(start, end):
-        expected = expected_income(user, month)
+        # Base ajustada pelo recebido (meses futuros sem recebimento = esperado).
+        expected = budget_income(user, month)["base"]
         committed = sum(by_month_block[month].values(), ZERO)
         result.append(
             {
