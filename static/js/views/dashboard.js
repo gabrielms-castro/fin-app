@@ -2,8 +2,8 @@ import { api } from "../api.js";
 import { PALETTE, moneyTick, renderChart } from "../components/charts.js";
 import { fields, readForm } from "../components/form.js";
 import { skeletonRows } from "../components/loading.js";
-import { openModal, toast } from "../components/modal.js";
-import { addMonths, currentMonth, fmtDate, fmtMonth, fmtMonthLong, html, money, pct, signClass } from "../format.js";
+import { confirmDialog, openModal, toast } from "../components/modal.js";
+import { addMonths, currentMonth, esc, fmtDate, fmtMonth, fmtMonthLong, html, money, pct, raw, signClass } from "../format.js";
 import { icon } from "../icons.js";
 import { setQuery } from "../router.js";
 import { empty, kpi, monthNav, pageHead, progress } from "../ui.js";
@@ -25,7 +25,7 @@ function commitmentCard(c, month) {
       <a href="#/config" class="text-xs font-medium text-indigo-600 dark:text-indigo-400">ajustar teto</a></span></h2>
     <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
       <div><a href="${link}" class="num text-2xl font-bold hover:text-indigo-600 dark:hover:text-indigo-400" title="Ver compras parceladas">${money(c.committed)}</a>
-        <div class="text-xs muted">${pct(Number(c.pct))} da entrada esperada em parcelas</div></div>
+        <div class="text-xs muted">${pct(Number(c.pct))} da entrada do mês em parcelas</div></div>
       <div class="sm:text-right"><div class="num text-sm font-semibold">teto ${pct(Number(c.ceiling_pct))} · ${money(c.ceiling_amount)}</div>
         ${c.status === "over"
           ? html`<div class="text-xs neg">${money(c.excess)} acima do teto</div>`
@@ -37,6 +37,85 @@ function commitmentCard(c, month) {
       <a href="${link}" class="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">Ver compras parceladas${icon("arrow-up-right", "size-3.5")}</a>
     </div>
   </div>`;
+}
+
+function freeBalanceCard(fb, allocations, month) {
+  if (!fb.start) {
+    return html`<div class="card"><h2 class="card-title">Saldo livre</h2>
+      ${empty("Lance seus recebimentos em Receitas para acompanhar o dinheiro que sobra de um mês para o outro.", "wallet")}</div>`;
+  }
+  const line = (label, value, sign = "") =>
+    html`<div class="flex justify-between gap-3 py-1.5 text-sm"><span class="muted">${label}</span><span class="num font-medium">${sign}${money(Math.abs(value))}</span></div>`;
+  const carrySign = Number(fb.carry_in) < 0 ? "− " : "";
+  return html`<div class="card">
+    <h2 class="card-title">Saldo livre <span class="text-xs font-normal muted">dinheiro real que sobra e passa para o próximo mês</span></h2>
+    <div class="grid gap-5 md:grid-cols-2">
+      <div>
+        <div class="divide-y divide-slate-100 dark:divide-slate-800">
+          ${line(`Saldo de ${fmtMonth(addMonths(month, -1) + "-01")}`, fb.carry_in, carrySign)}
+          ${line("Recebido", fb.received, "+ ")}
+          ${line("Gasto", fb.spent, "− ")}
+          ${line("Destinado", fb.allocated, "− ")}
+        </div>
+        <div class="mt-2 flex items-end justify-between gap-3 border-t-2 border-slate-200 pt-3 dark:border-slate-700">
+          <span class="text-sm font-semibold">Disponível</span>
+          <span class="num text-2xl font-bold ${signClass(fb.available)}">${money(fb.available)}</span>
+        </div>
+        <button class="btn btn-primary mt-3 w-full" data-allocate ${Number(fb.available) > 0 ? "" : "disabled"}>${icon("piggy-bank")}Destinar para meta ou investimento</button>
+        ${Number(fb.available) < 0 ? html`<p class="mt-2 text-xs neg">Você gastou mais do que recebeu até aqui; o negativo passa para o próximo mês.</p>` : ""}
+      </div>
+      <div>
+        <h3 class="mb-2 text-sm font-semibold">Destinado neste mês</h3>
+        ${allocations.length
+          ? html`<div class="list">${allocations.map(
+              (a) => html`<div class="flex items-center gap-2 py-2 text-sm" data-allocation="${a.id}">
+                <span class="dot" style="background:${a.destination.color}"></span>
+                <div class="min-w-0 flex-1"><div class="truncate font-medium">${a.destination.name}</div>
+                  <div class="text-xs muted">${a.destination.type === "meta" ? "Meta" : "Investimento"}${a.notes ? ` · ${a.notes}` : ""}</div></div>
+                <span class="num font-medium">${money(a.amount)}</span>
+                <button type="button" class="btn-icon hover:!text-rose-600" data-undo title="Desfazer destinação" aria-label="Desfazer destinação">${icon("trash-2")}</button>
+              </div>`
+            )}</div>`
+          : html`<p class="text-sm muted">Nada destinado ainda. O que sobrar passa automaticamente para o próximo mês.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+async function openAllocationForm(month, available, reload) {
+  const [goals, investments] = await Promise.all([api.get("goals/"), api.get("investments/")]);
+  const activeGoals = goals.filter((g) => g.active);
+  const activeInvestments = investments.filter((i) => i.active);
+  if (!activeGoals.length && !activeInvestments.length) {
+    toast("Cadastre uma meta ou um investimento para destinar a sobra.", true);
+    return;
+  }
+  const opts = (items, type) => items.map((o) => `<option value="${type}:${o.id}">${esc(o.name)}</option>`).join("");
+  const select = `<select class="input" name="goal" required><option value="">Selecione…</option>
+    ${activeGoals.length ? `<optgroup label="Metas">${opts(activeGoals, "goal")}</optgroup>` : ""}
+    ${activeInvestments.length ? `<optgroup label="Investimentos">${opts(activeInvestments, "investment")}</optgroup>` : ""}</select>`;
+  openModal({
+    title: `Destinar sobra · ${fmtMonthLong(`${month}-01`)}`,
+    submitLabel: "Destinar",
+    content: html`
+      <div class="space-y-4">
+        <label class="field">Destino${raw(select)}<span class="hint">Meta ligada a um investimento recebe o aporte nele.</span></label>
+        ${fields(
+          [
+            { name: "amount", label: "Valor", type: "money", required: true, full: true, hint: `Disponível: ${money(available)}` },
+            { name: "notes", label: "Observação", full: true },
+          ],
+          { amount: available }
+        )}
+      </div>`,
+    onSubmit: async (form) => {
+      const { amount, notes } = readForm(form);
+      const [type, id] = form.elements.goal.value.split(":");
+      await api.post("surplus-allocations/", { competence: `${month}-01`, amount, notes, [type]: Number(id) });
+      toast("Sobra destinada");
+      reload();
+    },
+  });
 }
 
 const BLOCK_COLS = "md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_minmax(0,1.2fr)]";
@@ -58,11 +137,12 @@ export async function render(el, { query }) {
     const body = el.querySelector("[data-body]");
     body.classList.add("is-loading");
     try {
-      const [summary, projection] = await Promise.all([
+      const [summary, projection, allocations] = await Promise.all([
         api.get("dashboard/", { month }),
         api.get("projection/", { months: 12, start: month }),
+        api.get("surplus-allocations/", { month }),
       ]);
-      draw(body, summary, projection, month, load);
+      draw(body, summary, projection, month, load, allocations);
     } finally {
       body.classList.remove("is-loading");
     }
@@ -122,19 +202,24 @@ function blocksTable(blocks, categories, month) {
     <div class="${rowCls} border-t-2 border-slate-200 font-semibold dark:border-slate-700">${cells({ name: "Total", ...total, pct: totalPct }, true)}</div>`;
 }
 
-function draw(body, s, projection, month, reload) {
+function draw(body, s, projection, month, reload, allocations = []) {
+  const adjusted = Number(s.budget_base) !== Number(s.expected_income);
   body.innerHTML = html`
     <div class="stack">
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div class="card">
-          <div class="kpi-label">${icon("wallet", "size-3.5")}Entrada esperada
-            <button class="ml-auto cursor-pointer text-indigo-600 hover:underline dark:text-indigo-400" data-plan title="Editar entrada do mês">${icon("pencil", "size-3.5")}</button></div>
-          <div class="kpi-value">${money(s.expected_income)}</div>
+          <div class="kpi-label">${icon("wallet", "size-3.5")}Entrada do mês
+            <button class="ml-auto cursor-pointer text-indigo-600 hover:underline dark:text-indigo-400" data-plan title="Editar entrada esperada do mês">${icon("pencil", "size-3.5")}</button></div>
+          <div class="kpi-value">${money(s.budget_base)}</div>
+          <div class="mt-0.5 text-xs muted">esperado ${money(s.expected_income)} · recebido ${money(s.received)}</div>
+          ${adjusted ? html`<span class="badge badge-info mt-1.5" title="A base do orçamento usa o valor recebido no lugar do esperado">ajustado pelo recebido</span>` : ""}
         </div>
         ${kpi("Recebido", money(s.received), { iconName: "trending-up" })}
         ${kpi("Gasto no mês", money(s.spent), { iconName: "trending-down", sub: `pendente ${money(s.pending)}` })}
         ${kpi("Saldo previsto", money(s.balance_expected), { iconName: "piggy-bank", cls: signClass(s.balance_expected), sub: `sobre recebido ${money(s.balance_received)}` })}
       </div>
+
+      ${freeBalanceCard(s.free_balance, allocations, month)}
 
       ${commitmentCard(s.installments_commitment, month)}
 
@@ -152,12 +237,12 @@ function draw(body, s, projection, month, reload) {
       <div class="card">
         <h2 class="card-title">Projeção 12 meses <span class="text-xs font-normal muted">parcelas + recorrentes</span></h2>
         <div class="chart-box !h-72"><canvas id="ch-projection"></canvas></div>
-        <div class="mt-4 list-head grid-cols-4 gap-x-4"><span>Mês</span><span class="text-right">Esperado</span><span class="text-right">Comprometido</span><span class="text-right">Livre</span></div>
+        <div class="mt-4 list-head grid-cols-4 gap-x-4"><span>Mês</span><span class="text-right">Entrada</span><span class="text-right">Comprometido</span><span class="text-right">Livre</span></div>
         <div class="list">${projection.months.map(
           (m) => html`<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 py-2.5 text-sm md:grid-cols-4">
             <span class="font-medium">${fmtMonth(m.month)}</span>
             <span class="num text-right font-semibold md:order-4 ${signClass(m.free)}">${money(m.free)}</span>
-            <span class="num text-xs muted md:order-2 md:text-right md:text-sm">${money(m.expected_income)}<span class="md:hidden"> esperado</span></span>
+            <span class="num text-xs muted md:order-2 md:text-right md:text-sm">${money(m.expected_income)}<span class="md:hidden"> entrada</span></span>
             <span class="num text-right text-xs muted md:order-3 md:text-sm">${money(m.committed)} · ${pct(m.committed_pct)}</span>
           </div>`
         )}</div>
@@ -238,6 +323,17 @@ function draw(body, s, projection, month, reload) {
     })
   );
 
+  body.querySelector("[data-allocate]")?.addEventListener("click", () => openAllocationForm(month, s.free_balance.available, reload));
+  body.querySelectorAll("[data-undo]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const id = btn.closest("[data-allocation]").dataset.allocation;
+      if (!(await confirmDialog("Desfazer esta destinação? O valor volta para o saldo livre.", { okLabel: "Desfazer" }))) return;
+      await api.del(`surplus-allocations/${id}/`);
+      toast("Destinação desfeita");
+      reload();
+    })
+  );
+
   body.querySelector("[data-plan]").addEventListener("click", () =>
     openModal({
       title: `Entrada esperada · ${fmtMonthLong(`${month}-01`)}`,
@@ -290,7 +386,7 @@ function draw(body, s, projection, month, reload) {
       datasets: [
         {
           type: "line",
-          label: "Entrada esperada",
+          label: "Entrada",
           data: projection.months.map((m) => m.expected_income),
           borderColor: "#94a3b8",
           borderDash: [6, 4],
