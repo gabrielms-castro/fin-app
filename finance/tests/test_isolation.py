@@ -14,6 +14,7 @@ from finance.models import (
     MonthPlan,
     Nature,
     RecurringExpense,
+    SurplusAllocation,
 )
 from finance.services.investments import sync_expense
 
@@ -49,6 +50,9 @@ class IsolationTests(TestCase):
         )
         sync_expense(self.movement)
         self.goal = Goal.objects.create(user=o, name="Viagem", target_amount=Decimal("5000"), investment=self.investment)
+        self.allocation = SurplusAllocation.objects.create(
+            user=o, competence=date(2026, 10, 1), amount=Decimal("100"), goal=self.goal,
+        )
 
         self.resources = {
             "cards": self.card, "expenses": self.expense, "installments": self.installment,
@@ -56,8 +60,10 @@ class IsolationTests(TestCase):
             "incomes": self.income, "month-plans": self.plan, "investments": self.investment,
             "investment-movements": self.movement, "goals": self.goal, "categories": category(o),
             "natures": Nature.objects.filter(user=o).first(), "blocks": Block.objects.filter(user=o).first(),
+            "surplus-allocations": self.allocation,
         }
         self.read_only = {"installments", "invoices"}
+        self.no_edit = self.read_only | {"surplus-allocations"}
 
     def ids(self, response):
         data = response.data
@@ -70,9 +76,10 @@ class IsolationTests(TestCase):
                 url = f"/api/{route}/{obj.pk}/"
                 self.assertEqual(self.client.get(url).status_code, 404)
                 self.assertNotIn(obj.pk, self.ids(self.client.get(f"/api/{route}/")))
-                expected = 405 if route in self.read_only else 404
-                self.assertEqual(self.client.patch(url, {}, format="json").status_code, expected)
-                self.assertEqual(self.client.delete(url).status_code, expected)
+                self.assertEqual(
+                    self.client.patch(url, {}, format="json").status_code, 405 if route in self.no_edit else 404
+                )
+                self.assertEqual(self.client.delete(url).status_code, 405 if route in self.read_only else 404)
                 self.assertTrue(type(obj).objects.filter(pk=obj.pk).exists())
 
     def test_cannot_run_actions_on_others_resources(self):
@@ -109,6 +116,7 @@ class IsolationTests(TestCase):
             ("/api/investment-movements/", {
                 "investment": self.investment.pk, "kind": "aporte", "date": "2026-10-06", "amount": "10",
             }),
+            ("/api/surplus-allocations/", {"competence": "2026-10-01", "amount": "1", "goal": self.goal.pk}),
         ]
         for url, data in attempts:
             with self.subTest(url=url):

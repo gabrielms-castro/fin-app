@@ -358,3 +358,31 @@ class Goal(Owned):
 
     def __str__(self):
         return self.name
+
+
+class SurplusAllocation(Owned):
+    """Parte do saldo livre (sobra de dinheiro real) destinada a uma meta ou a um investimento.
+
+    Destinar a um investimento (ou a uma meta ligada a um) cria um aporte sem lançamento:
+    o valor sai do saldo livre, não conta como gasto do mês e não consome bloco.
+    """
+
+    competence = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
+    # Meta excluída: a destinação continua contando (o dinheiro segue separado) até ser desfeita.
+    goal = models.ForeignKey(Goal, on_delete=models.SET_NULL, null=True, blank=True, related_name="allocations")
+    investment = models.ForeignKey(
+        Investment, on_delete=models.CASCADE, null=True, blank=True, related_name="allocations"
+    )
+    # Excluir o aporte (inclusive pela aba Investimentos) desfaz a destinação.
+    movement = models.OneToOneField(
+        InvestmentMovement, on_delete=models.CASCADE, null=True, blank=True, related_name="surplus_allocation"
+    )
+    notes = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-competence", "-id"]
+
+    def __str__(self):
+        return f"Sobra {self.competence:%m/%Y} {self.amount}"

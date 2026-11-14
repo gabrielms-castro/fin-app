@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from django.db.models import Sum
+
 from .dates import today
 from .investments import balance
 
@@ -14,7 +16,13 @@ def months_between(start, end):
 def goal_progress(goal, reference=None):
     """Quanto já foi juntado e quanto guardar por mês para bater a meta no prazo."""
     reference = reference or today()
-    saved = balance(goal.investment) if goal.investment_id else goal.initial_amount
+    if goal.investment_id:
+        saved = balance(goal.investment)
+    else:
+        allocated = ZERO
+        if goal.pk:
+            allocated = goal.allocations.filter(movement__isnull=True).aggregate(t=Sum("amount"))["t"] or ZERO
+        saved = goal.initial_amount + allocated
     remaining = max(goal.target_amount - saved, ZERO)
     months_left = max(months_between(reference, goal.target_date), 1) if goal.target_date else None
     if months_left is None:

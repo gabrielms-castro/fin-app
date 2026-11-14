@@ -22,6 +22,7 @@ from .filters import (
     InstallmentFilter,
     InvestmentMovementFilter,
     InvoiceFilter,
+    SurplusAllocationFilter,
 )
 from .models import (
     Block,
@@ -39,6 +40,7 @@ from .models import (
     Nature,
     PaymentMethod,
     RecurringExpense,
+    SurplusAllocation,
     get_settings,
 )
 from .services import budget
@@ -53,6 +55,7 @@ from .services.installments import (
 )
 from .services.recurring import materialize
 from .services.investments import delete_movement, investments_summary, set_balance, sync_expense
+from .services.surplus import create_allocation, delete_allocation, is_surplus_movement
 
 
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -375,10 +378,32 @@ class InvestmentMovementViewSet(OwnedViewSet):
         sync_expense(serializer.save())
 
     def perform_update(self, serializer):
+        if is_surplus_movement(serializer.instance):
+            raise ValidationError({"detail": "Este aporte veio da sobra do mês; desfaça a destinação no dashboard."})
         sync_expense(serializer.save())
 
     def perform_destroy(self, instance):
         delete_movement(instance)
+
+
+class SurplusAllocationViewSet(OwnedViewSet):
+    """Destinações do saldo livre. Não há edição: exclua e crie de novo."""
+
+    queryset = SurplusAllocation.objects.select_related("goal", "investment")
+    serializer_class = s.SurplusAllocationSerializer
+    filterset_class = SurplusAllocationFilter
+    pagination_class = None
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        serializer.instance = create_allocation(
+            self.request.user, data["competence"], data["amount"],
+            goal=data.get("goal"), investment=data.get("investment"), notes=data.get("notes", ""),
+        )
+
+    def perform_destroy(self, instance):
+        delete_allocation(instance)
 
 
 @api_view(["GET"])

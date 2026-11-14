@@ -21,6 +21,7 @@ from ..models import (
 from .dates import add_months, iter_months, month_start, today
 from .investments import investments_summary
 from .recurring import materialize, monthly_equivalent, virtual_occurrences
+from .surplus import free_balance
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
@@ -198,6 +199,7 @@ def month_summary(user, month):
         "pending": pending,
         "balance_expected": base - spent,
         "balance_received": received - spent,
+        "free_balance": free_balance(user, month, materialized=True),
         "blocks": _with_natures(_block_rows(Block.objects.filter(user=user), base, by_block), natures, by_nature),
         "by_nature": [
             {"id": n.id, "name": n.name, "total": by_nature[n.id]} for n in natures if by_nature.get(n.id)

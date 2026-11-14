@@ -18,12 +18,14 @@ from .models import (
     Nature,
     PaymentMethod,
     RecurringExpense,
+    SurplusAllocation,
     UserSettings,
 )
 from .services.dates import month_start, today
 from .services.goals import goal_progress
 from .services.investments import investment_stats
 from .services.recurring import monthly_equivalent, next_charge
+from .services.surplus import free_balance
 
 
 class OwnedSerializer(serializers.ModelSerializer):
@@ -357,3 +359,35 @@ class GoalSerializer(OwnedSerializer):
         if value and not unchanged and value < today():
             raise serializers.ValidationError("O prazo não pode estar no passado.")
         return value
+
+
+class SurplusAllocationSerializer(OwnedSerializer):
+    goal_name = serializers.CharField(source="goal.name", read_only=True, default=None)
+    investment_name = serializers.CharField(source="investment.name", read_only=True, default=None)
+    destination = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SurplusAllocation
+        fields = [
+            "id", "competence", "amount", "goal", "goal_name", "investment", "investment_name",
+            "destination", "notes", "movement", "created_at",
+        ]
+        read_only_fields = ["movement", "created_at"]
+
+    def get_destination(self, obj):
+        if obj.goal_id:
+            return {"type": "meta", "name": obj.goal.name, "color": obj.goal.color}
+        if obj.investment_id:
+            return {"type": "investimento", "name": obj.investment.name, "color": obj.investment.color}
+        return {"type": "meta", "name": "Meta excluída", "color": "#94a3b8"}
+
+    def validate_competence(self, value):
+        return month_start(value)
+
+    def validate(self, attrs):
+        if bool(attrs.get("goal")) == bool(attrs.get("investment")):
+            raise serializers.ValidationError({"goal": "Escolha um destino: uma meta ou um investimento."})
+        available = free_balance(self.context["request"].user, attrs["competence"])["available"]
+        if attrs["amount"] > available:
+            raise serializers.ValidationError({"amount": "Valor maior que o saldo livre disponível."})
+        return attrs

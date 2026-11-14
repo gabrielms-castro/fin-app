@@ -1,6 +1,6 @@
 import django_filters as filters
 
-from .models import Expense, Income, Installment, InvestmentMovement, Invoice, PaymentMethod
+from .models import Expense, Income, Installment, InvestmentMovement, Invoice, PaymentMethod, SurplusAllocation
 from .services.budget import INSTALLMENT_PURCHASE
 from .services.dates import add_months, parse_month
 
@@ -114,3 +114,17 @@ class InvestmentMovementFilter(filters.FilterSet):
         if not month:
             return qs
         return qs.filter(date__gte=month, date__lt=add_months(month, 1))
+
+
+class SurplusAllocationFilter(filters.FilterSet):
+    month = filters.CharFilter(method="filter_month")
+    goal = filters.NumberFilter()
+    investment = filters.NumberFilter()
+
+    class Meta:
+        model = SurplusAllocation
+        fields = []
+
+    def filter_month(self, qs, name, value):
+        month = parse_month(value)
+        return qs.filter(competence=month) if month else qs

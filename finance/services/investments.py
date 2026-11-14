@@ -20,7 +20,13 @@ SIGNED = Sum(
 
 @transaction.atomic
 def sync_expense(movement):
-    """Aporte vira um lançamento pago no orçamento; outros tipos não geram lançamento."""
+    """Aporte vira um lançamento pago no orçamento; outros tipos não geram lançamento.
+
+    Aportes feitos com a sobra do mês (SurplusAllocation) já saíram do saldo livre e
+    nunca viram lançamento.
+    """
+    if hasattr(movement, "surplus_allocation"):
+        return movement
     if movement.kind != InvestmentMovement.DEPOSIT:
         if movement.expense_id:
             expense = movement.expense
