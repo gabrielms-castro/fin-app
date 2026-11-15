@@ -111,9 +111,10 @@ async function openAllocationForm(month, available, reload) {
       </div>`,
     onSubmit: async (form) => {
       const { amount, notes } = readForm(form);
-      const [type, id] = form.elements.goal.value.split(":");
+      const select = form.elements.goal;
+      const [type, id] = select.value.split(":");
       await api.post("surplus-allocations/", { competence: `${month}-01`, amount, notes, [type]: Number(id) });
-      toast("Sobra destinada");
+      toast(`${money(amount)} destinado a "${select.selectedOptions[0].textContent}" · aparece no histórico ${type === "goal" ? "da meta" : "do investimento"}`);
       reload();
     },
   });
