@@ -5,7 +5,14 @@ import { fmtMonth, html, money, todayISO } from "../format.js";
 import { icon } from "../icons.js";
 import { DEBT_CATEGORY, activeCards, activeCategories, store } from "../state.js";
 
-/** Formulário de compra/dívida. Retorna uma Promise resolvida quando salvar. */
+/** Campos mantidos em "Salvar e lançar outro" (o resto volta ao padrão). */
+const KEEP_ON_NEXT = new Set(["date", "payment_method", "card", "category", "kind", "amount_mode", "creditor", "interest_rate"]);
+
+/**
+ * Formulário de compra/dívida. Retorna uma Promise resolvida ao fechar o modal depois de
+ * salvar ao menos um lançamento (com o último salvo). Em lançamento novo, "Salvar e lançar
+ * outro" salva e limpa o formulário mantendo data, forma de pagamento, cartão e grupo.
+ */
 export function openExpenseForm({ expense = null, kind = "compra", defaults = {} } = {}) {
   const isDebt = (expense?.kind || kind) === "divida";
   const values = {
@@ -21,6 +28,7 @@ export function openExpenseForm({ expense = null, kind = "compra", defaults = {}
 
   const content = html`
     <div class="space-y-4">
+      <div class="flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm" data-batch-status role="status" aria-live="polite" hidden></div>
       ${fields(
         [
           { name: "description", label: "Descrição", required: true, full: true, placeholder: isDebt ? "Empréstimo, financiamento…" : "Mercado, Uber…" },
@@ -53,18 +61,66 @@ export function openExpenseForm({ expense = null, kind = "compra", defaults = {}
     </div>`;
 
   return new Promise((resolve) => {
+    let lastSaved = null;
+    let savedCount = 0;
     openModal({
       title: expense ? "Editar lançamento" : isDebt ? "Nova dívida" : "Novo lançamento",
       content,
+      secondaryLabel: expense ? "" : "Salvar e lançar outro",
       onOpen: (form) => setup(form, isDebt, expense?.id),
-      onSubmit: async (form) => {
+      onSubmit: async (form, { action }) => {
         const data = payload(form, values.kind);
-        const saved = expense ? await api.put(`expenses/${expense.id}/`, data) : await api.post("expenses/", data);
-        toast("Lançamento salvo");
-        resolve(saved);
+        try {
+          lastSaved = expense ? await api.put(`expenses/${expense.id}/`, data) : await api.post("expenses/", data);
+        } catch (err) {
+          // Em sequência o usuário pode nem olhar o formulário: o erro fica visível no topo e no toast.
+          batchStatus(form, "error", html`<b>Não foi salvo.</b> ${data.description ? html`"${data.description}" ` : ""}precisa de correção nos campos destacados.${
+            savedCount === 1 ? " O anterior está salvo." : savedCount > 1 ? ` Os ${savedCount} anteriores estão salvos.` : ""}`);
+          toast(`Erro: "${data.description || "lançamento"}" não foi salvo`, true);
+          throw err;
+        }
+        savedCount += 1;
+        const label = `"${data.description}" · ${money(data.total_amount || data.installment_amount)}${
+          data.installments_count > 1 ? ` em ${data.installments_count}x` : ""}`;
+        if (action !== "secondary") {
+          toast(savedCount > 1 ? `${label} salvo · ${savedCount} lançamentos nesta sequência` : `${label} salvo`);
+          return false;
+        }
+        toast(`✓ ${label} salvo`);
+        batchStatus(form, "ok", html`<b>${label} salvo.</b> ${
+          savedCount > 1 ? `${savedCount} lançamentos nesta sequência. ` : ""}Pode lançar o próximo.`);
+        resetForNext(form, values);
+        return true;
       },
+      onClose: () => lastSaved && resolve(lastSaved),
     });
   });
+}
+
+/** Faixa no topo do formulário com o resultado do último envio em sequência. */
+function batchStatus(form, kind, message) {
+  const el = form.querySelector("[data-batch-status]");
+  const ok = kind === "ok";
+  el.className = `flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm ${ok
+    ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200"
+    : "bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-200"}`;
+  el.innerHTML = html`${icon(ok ? "circle-check" : "circle-alert", "size-4 mt-0.5 shrink-0")}<span>${message}</span>`;
+  el.hidden = false;
+  if (!ok) el.scrollIntoView({ block: "nearest" });
+}
+
+/** Limpa o formulário para o próximo lançamento, mantendo os campos de KEEP_ON_NEXT. */
+function resetForNext(form, values) {
+  form.querySelectorAll(".field-error").forEach((el) => el.remove());
+  form.querySelectorAll(".input-error").forEach((el) => el.classList.remove("input-error"));
+  for (const el of form.elements) {
+    if (!el.name || KEEP_ON_NEXT.has(el.name) || el.type === "radio" || el.type === "checkbox") continue;
+    if (el.name === "installments_count") el.value = values.installments_count ?? 1;
+    else if (el.tagName === "SELECT") el.value = values[el.name] ?? "";
+    else el.value = "";
+  }
+  form.dispatchEvent(new Event("change", { bubbles: true }));
+  form.querySelector('[name="description"]')?.focus();
 }
 
 function payload(form, kind) {

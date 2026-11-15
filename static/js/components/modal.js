@@ -7,9 +7,13 @@ const root = () => document.getElementById("modal-root");
 /**
  * Abre um modal. `content` é HTML; `onSubmit(form)` pode lançar erro para manter aberto.
  * `footerStart` é HTML extra no início do rodapé (ex.: botão Excluir à esquerda).
+ * `secondaryLabel` adiciona um segundo botão de envio; `onSubmit(form, { action })` recebe
+ * action "secondary" quando ele é usado. `onClose()` roda sempre que o modal fecha.
  * Retorna { el, close }.
  */
-export function openModal({ title, content, submitLabel = "Salvar", onSubmit, onOpen, danger = false, footerStart = "", cancelLabel = "Cancelar" }) {
+export function openModal({ title, content, submitLabel = "Salvar", onSubmit, onOpen, onClose, danger = false, footerStart = "", cancelLabel = "Cancelar", secondaryLabel = "" }) {
+  // O botão principal vem antes do secundário no DOM (Enter num campo aciona o 1º botão de
+  // envio) e vai para o fim do rodapé com order-last.
   const wrapper = document.createElement("div");
   wrapper.className = "motion-safe:animate-fade-in fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/50 backdrop-blur-[2px] sm:items-center sm:p-4";
   wrapper.innerHTML = html`
@@ -22,9 +26,11 @@ export function openModal({ title, content, submitLabel = "Salvar", onSubmit, on
       <footer class="flex gap-2 border-t border-slate-200 px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:justify-end sm:pb-4 dark:border-slate-800">
         ${footerStart ? html`<div class="flex flex-1 gap-2 sm:mr-auto sm:flex-none">${raw(footerStart)}</div>` : ""}
         <button type="button" class="btn flex-1 sm:flex-none" data-close>${cancelLabel}</button>
-        ${onSubmit ? html`<button class="btn ${danger ? "btn-danger" : "btn-primary"} flex-1 sm:flex-none" type="submit">${submitLabel}</button>` : ""}
+        ${onSubmit ? html`<button class="btn ${danger ? "btn-danger" : "btn-primary"} order-last flex-1 sm:flex-none" type="submit" data-action="primary">${submitLabel}</button>` : ""}
+        ${onSubmit && secondaryLabel ? html`<button class="btn flex-1 sm:flex-none" type="submit" data-action="secondary">${secondaryLabel}</button>` : ""}
       </footer>
     </form>`;
+  if (secondaryLabel) wrapper.querySelector("footer").classList.add("flex-wrap");
   const form = wrapper.querySelector("form");
   const previousFocus = document.activeElement;
 
@@ -33,6 +39,7 @@ export function openModal({ title, content, submitLabel = "Salvar", onSubmit, on
     document.removeEventListener("keydown", onKey);
     document.body.style.overflow = "";
     previousFocus?.focus?.();
+    onClose?.();
   };
   const onKey = (e) => e.key === "Escape" && close();
 
@@ -49,15 +56,18 @@ export function openModal({ title, content, submitLabel = "Salvar", onSubmit, on
       invalid.reportValidity();
       return;
     }
-    const button = form.querySelector('[type="submit"]');
+    const buttons = [...form.querySelectorAll('[type="submit"]')];
+    const button = e.submitter?.matches?.('[type="submit"]') ? e.submitter : buttons[0];
+    buttons.forEach((b) => (b.disabled = true));
     setButtonLoading(button, true);
     try {
-      const keepOpen = await onSubmit(form);
+      const keepOpen = await onSubmit(form, { action: button?.dataset.action || "primary" });
       if (keepOpen !== true) close();
     } catch (err) {
       showErrors(form, err);
     } finally {
       setButtonLoading(button, false);
+      buttons.forEach((b) => (b.disabled = false));
     }
   });
 
