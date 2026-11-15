@@ -30,6 +30,7 @@ from .models import (
     CreditCard,
     Expense,
     Goal,
+    GoalMovement,
     Income,
     IncomeSource,
     Installment,
@@ -55,7 +56,8 @@ from .services.installments import (
 )
 from .services.recurring import materialize
 from .services.investments import delete_movement, investments_summary, set_balance, sync_expense
-from .services.surplus import create_allocation, delete_allocation, is_surplus_movement
+from .services.goals import delete_goal, delete_goal_movement, move_goal
+from .services.surplus import create_allocation, delete_allocation, free_balance, is_surplus_movement
 
 
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -235,6 +237,8 @@ class ExpenseViewSet(OwnedViewSet):
     def perform_destroy(self, instance):
         if instance.kind == Expense.INVESTMENT:
             raise ValidationError({"detail": "Aportes são gerenciados na aba Investimentos."})
+        if instance.kind == Expense.GOAL:
+            raise ValidationError({"detail": "Aportes em metas são gerenciados na aba Metas."})
         user = instance.user
         instance.delete()
         delete_empty_invoices(user)
@@ -364,9 +368,35 @@ class InvestmentViewSet(OwnedViewSet):
 
 
 class GoalViewSet(OwnedViewSet):
-    queryset = Goal.objects.select_related("investment")
+    queryset = Goal.objects.select_related("investment", "category")
     serializer_class = s.GoalSerializer
     pagination_class = None
+
+    def perform_destroy(self, instance):
+        delete_goal(instance)
+
+    @action(detail=True, methods=["post"])
+    def move(self, request, pk=None):
+        """Aporte (só com saldo livre suficiente; vira gasto do mês) ou retirada da meta."""
+        goal = self.get_object()
+        serializer = s.GoalMoveSerializer(data=request.data, context={"goal": goal, "request": request})
+        serializer.is_valid(raise_exception=True)
+        move_goal(goal, **serializer.validated_data)
+        goal.refresh_from_db()
+        return Response(s.GoalSerializer(goal, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+class GoalMovementViewSet(OwnedViewSet):
+    """Histórico de aportes/retiradas de metas sem investimento. Sem edição: exclua e lance de novo."""
+
+    queryset = GoalMovement.objects.all()
+    serializer_class = s.GoalMovementSerializer
+    filterset_fields = ["goal"]
+    pagination_class = None
+    http_method_names = ["get", "delete", "head", "options"]
+
+    def perform_destroy(self, instance):
+        delete_goal_movement(instance)
 
 
 class InvestmentMovementViewSet(OwnedViewSet):
@@ -410,6 +440,12 @@ class SurplusAllocationViewSet(OwnedViewSet):
 def dashboard(request):
     month = parse_month(request.query_params.get("month"), today().replace(day=1))
     return Response(budget.month_summary(request.user, month))
+
+
+@api_view(["GET"])
+def free_balance_view(request):
+    month = parse_month(request.query_params.get("month"), today().replace(day=1))
+    return Response(free_balance(request.user, month))
 
 
 @api_view(["GET"])

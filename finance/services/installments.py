@@ -55,7 +55,7 @@ def generate_installments(expense):
         amounts = split_amount(expense.total_amount, count)
 
     is_credit = expense.payment_method == PaymentMethod.CREDIT and expense.card_id
-    auto_paid = expense.kind == Expense.INVESTMENT or (
+    auto_paid = expense.kind in Expense.MANAGED_KINDS or (
         expense.payment_method in INSTANT_METHODS and expense.kind != Expense.DEBT
     )
     if is_credit:

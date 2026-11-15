@@ -10,6 +10,7 @@ import { confirmDialog, openModal, toast } from "./modal.js";
 export const OWN_TAB = {
   divida: { href: "#/dividas", label: "Abrir em Dívidas" },
   investimento: { href: "#/investimentos", label: "Abrir em Investimentos" },
+  meta: { href: "#/metas", label: "Abrir em Metas" },
 };
 
 const item = (label, value) =>

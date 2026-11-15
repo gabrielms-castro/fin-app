@@ -18,11 +18,13 @@ router.register("month-plans", views.MonthPlanViewSet, basename="month-plan")
 router.register("investments", views.InvestmentViewSet, basename="investment")
 router.register("goals", views.GoalViewSet, basename="goal")
 router.register("investment-movements", views.InvestmentMovementViewSet, basename="investment-movement")
+router.register("goal-movements", views.GoalMovementViewSet, basename="goal-movement")
 router.register("surplus-allocations", views.SurplusAllocationViewSet, basename="surplus-allocation")
 
 urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("projection/", views.projection, name="projection"),
+    path("free-balance/", views.free_balance_view, name="free-balance"),
     path("meta/", views.meta, name="meta"),
     path("settings/", views.user_settings, name="settings"),
     path("settings/onboarding/<str:step>/", views.onboarding, name="onboarding"),

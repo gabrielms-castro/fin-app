@@ -160,14 +160,17 @@ class RecurringExpense(Owned):
 
 
 class Expense(Owned):
-    PURCHASE, DEBT, RECURRING, INVESTMENT = "compra", "divida", "recorrente", "investimento"
+    PURCHASE, DEBT, RECURRING, INVESTMENT, GOAL = "compra", "divida", "recorrente", "investimento", "meta"
     KIND_CHOICES = [
         (PURCHASE, "Compra"), (DEBT, "Dívida"), (RECURRING, "Recorrente"), (INVESTMENT, "Investimento"),
+        (GOAL, "Meta"),
     ]
+    # Lançamentos gerados por aportes (Investimentos/Metas): só são alterados na tela de origem.
+    MANAGED_KINDS = (INVESTMENT, GOAL)
     # Grupo de gasto aceito por tipo de lançamento.
     SCOPE_BY_KIND = {
         PURCHASE: Category.EXPENSE, RECURRING: Category.EXPENSE,
-        DEBT: Category.DEBT, INVESTMENT: Category.INVESTMENT,
+        DEBT: Category.DEBT, INVESTMENT: Category.INVESTMENT, GOAL: Category.INVESTMENT,
     }
 
     kind = models.CharField(max_length=12, choices=KIND_CHOICES, default=PURCHASE)
@@ -348,6 +351,10 @@ class Goal(Owned):
     target_date = models.DateField(null=True, blank=True)
     initial_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     investment = models.ForeignKey(Investment, on_delete=models.SET_NULL, null=True, blank=True, related_name="goals")
+    # Grupo (do tipo Investimentos) dos lançamentos de aporte em meta sem investimento vinculado.
+    category = models.ForeignKey(
+        Category, on_delete=models.SET_NULL, null=True, blank=True, related_name="goals"
+    )
     color = models.CharField(max_length=9, default="#10b981")
     active = models.BooleanField(default=True)
     order = models.PositiveSmallIntegerField(default=0)
@@ -386,3 +393,30 @@ class SurplusAllocation(Owned):
 
     def __str__(self):
         return f"Sobra {self.competence:%m/%Y} {self.amount}"
+
+
+class GoalMovement(Owned):
+    """Aporte ou retirada em uma meta sem investimento vinculado.
+
+    O aporte vira um lançamento pago (tipo "meta") no grupo da meta e conta como gasto do
+    mês; a retirada devolve o valor ao saldo livre.
+    """
+
+    DEPOSIT, WITHDRAWAL = "aporte", "retirada"
+    KIND_CHOICES = [(DEPOSIT, "Aporte"), (WITHDRAWAL, "Retirada")]
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="movements")
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
+    notes = models.CharField(max_length=255, blank=True)
+    expense = models.OneToOneField(
+        Expense, on_delete=models.SET_NULL, null=True, blank=True, related_name="goal_movement"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date", "-id"]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} {self.goal} {self.amount}"

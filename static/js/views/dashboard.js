@@ -54,6 +54,7 @@ function freeBalanceCard(fb, allocations, month) {
         <div class="divide-y divide-slate-100 dark:divide-slate-800">
           ${line(`Saldo de ${fmtMonth(addMonths(month, -1) + "-01")}`, fb.carry_in, carrySign)}
           ${line("Recebido", fb.received, "+ ")}
+          ${Number(fb.redeemed) ? line("Retiradas e resgates", fb.redeemed, "+ ") : ""}
           ${line("Gasto", fb.spent, "− ")}
           ${line("Destinado", fb.allocated, "− ")}
         </div>

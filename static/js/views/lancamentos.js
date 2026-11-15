@@ -86,7 +86,7 @@ export async function render(el, { query }) {
       </div>
       <div class="flex flex-col items-end gap-1">
         <span class="num font-semibold">${money(i.amount)}</span>
-        ${i.invoice || i.kind === "investimento"
+        ${i.invoice || i.kind === "investimento" || i.kind === "meta"
           ? ""
           : html`<div class="-mr-2 flex">${iconButton("pay", i.paid ? "undo-2" : "check", i.paid ? "Marcar pendente" : "Marcar pago")}</div>`}
       </div>

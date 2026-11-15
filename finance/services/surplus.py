@@ -2,8 +2,10 @@
 
 Para cada mês M, a partir do mês do primeiro recebimento do usuário:
 
-    available(M) = carry_in(M) + received(M) − spent(M) − allocated(M)
+    available(M) = carry_in(M) + received(M) + redeemed(M) − spent(M) − allocated(M)
     carry_in(M)  = available(M − 1)   (0 no primeiro mês; negativo também rola)
+
+`redeemed` é o dinheiro que voltou para a mão: retiradas de metas e resgates de investimentos.
 
 `spent` é o mesmo do dashboard: todas as parcelas da competência (pagas e pendentes)
 mais as ocorrências ainda virtuais dos recorrentes. O saldo é calculado na hora, então
@@ -17,12 +19,12 @@ from django.db import transaction
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 
-from ..models import Income, Installment, InvestmentMovement, SurplusAllocation
+from ..models import GoalMovement, Income, Installment, InvestmentMovement, SurplusAllocation
 from .dates import add_months, iter_months, month_start, today
 from .recurring import materialize, virtual_occurrences
 
 ZERO = Decimal("0")
-EMPTY = {"carry_in": ZERO, "received": ZERO, "spent": ZERO, "allocated": ZERO, "available": ZERO}
+EMPTY = {"carry_in": ZERO, "received": ZERO, "redeemed": ZERO, "spent": ZERO, "allocated": ZERO, "available": ZERO}
 
 
 def series_start(user):
@@ -49,6 +51,22 @@ def free_balance(user, month, materialized=False):
     )
     for row in rows:
         received[month_start(row["m"])] += row["t"]
+
+    redeemed = defaultdict(lambda: ZERO)
+    withdrawals = [
+        GoalMovement.objects.filter(kind=GoalMovement.WITHDRAWAL),
+        InvestmentMovement.objects.filter(kind=InvestmentMovement.WITHDRAWAL),
+    ]
+    for qs in withdrawals:
+        rows = (
+            qs.filter(user=user, date__gte=start, date__lt=end)
+            .annotate(m=TruncMonth("date"))
+            .order_by()
+            .values("m")
+            .annotate(t=Sum("amount"))
+        )
+        for row in rows:
+            redeemed[month_start(row["m"])] += row["t"]
 
     spent = defaultdict(lambda: ZERO)
     rows = (
@@ -78,10 +96,11 @@ def free_balance(user, month, materialized=False):
         current = {
             "carry_in": carry,
             "received": received[m],
+            "redeemed": redeemed[m],
             "spent": spent[m],
             "allocated": allocated[m],
         }
-        current["available"] = carry + received[m] - spent[m] - allocated[m]
+        current["available"] = carry + received[m] + redeemed[m] - spent[m] - allocated[m]
         carry = current["available"]
     return {**current, "start": start}
 

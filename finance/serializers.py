@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal
 
 from rest_framework import serializers
 
@@ -8,6 +9,7 @@ from .models import (
     CreditCard,
     Expense,
     Goal,
+    GoalMovement,
     Income,
     IncomeSource,
     Installment,
@@ -22,7 +24,7 @@ from .models import (
     UserSettings,
 )
 from .services.dates import month_start, today
-from .services.goals import goal_progress
+from .services.goals import goal_category, goal_progress, goal_saved
 from .services.investments import investment_stats
 from .services.recurring import monthly_equivalent, next_charge
 from .services.surplus import free_balance
@@ -195,8 +197,11 @@ class ExpenseSerializer(OwnedSerializer):
     def validate(self, attrs):
         get = lambda key: attrs.get(key, getattr(self.instance, key, None))  # noqa: E731
         kind = get("kind") or Expense.PURCHASE
-        if kind == Expense.INVESTMENT or (self.instance and self.instance.kind == Expense.INVESTMENT):
+        managed = kind if kind in Expense.MANAGED_KINDS else getattr(self.instance, "kind", None)
+        if managed == Expense.INVESTMENT:
             raise serializers.ValidationError({"kind": "Aportes são registrados na aba Investimentos."})
+        if managed == Expense.GOAL:
+            raise serializers.ValidationError({"kind": "Aportes em metas são registrados na aba Metas."})
         if self.instance and "kind" in attrs and attrs["kind"] != self.instance.kind:
             raise serializers.ValidationError({"kind": "Não é possível mudar o tipo do lançamento."})
         category = get("category")
@@ -345,11 +350,22 @@ class GoalSerializer(OwnedSerializer):
         model = Goal
         fields = [
             "id", "name", "target_amount", "target_date", "initial_amount", "investment", "investment_name",
-            "color", "active", "order",
+            "category", "color", "active", "order", "created_at",
         ]
+        read_only_fields = ["created_at"]
 
     def to_representation(self, instance):
-        return {**super().to_representation(instance), **goal_progress(instance)}
+        category = goal_category(instance)
+        return {
+            **super().to_representation(instance),
+            **goal_progress(instance),
+            "category_name": category.name if category else None,
+        }
+
+    def validate_category(self, value):
+        if value and value.scope != Category.INVESTMENT:
+            raise serializers.ValidationError("Escolha um grupo do tipo Investimentos.")
+        return value
 
     def validate_color(self, value):
         return normalize_color(value)
@@ -390,4 +406,50 @@ class SurplusAllocationSerializer(OwnedSerializer):
         available = free_balance(self.context["request"].user, attrs["competence"])["available"]
         if attrs["amount"] > available:
             raise serializers.ValidationError({"amount": "Valor maior que o saldo livre disponível."})
+        return attrs
+
+
+def brl(value):
+    return "R$ " + f"{value:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+class GoalMovementSerializer(OwnedSerializer):
+    class Meta:
+        model = GoalMovement
+        fields = ["id", "goal", "kind", "date", "amount", "notes", "expense", "created_at"]
+        read_only_fields = ["goal", "expense", "created_at"]
+
+
+class GoalMoveSerializer(serializers.Serializer):
+    """Aporte/retirada pela tela de Metas. `goal` vem do contexto."""
+
+    kind = serializers.ChoiceField(choices=GoalMovement.KIND_CHOICES)
+    date = serializers.DateField(default=today)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+    # O formulário envia campo vazio como null.
+    notes = serializers.CharField(max_length=255, required=False, allow_blank=True, allow_null=True, default="")
+
+    def validate(self, attrs):
+        attrs["notes"] = attrs.get("notes") or ""
+        goal = self.context["goal"]
+        amount = attrs["amount"]
+        if not goal.active:
+            raise serializers.ValidationError({"detail": "Reative a meta para movimentá-la."})
+        if attrs["kind"] == GoalMovement.DEPOSIT:
+            if not goal.investment_id and goal_category(goal) is None:
+                raise serializers.ValidationError(
+                    {"amount": "Crie um grupo do tipo Investimentos em Configurações para registrar aportes."}
+                )
+            available = free_balance(goal.user, attrs["date"])["available"]
+            if amount > available:
+                hint = " Lance seus recebimentos em Receitas." if available <= 0 else ""
+                raise serializers.ValidationError(
+                    {"amount": f"Saldo livre insuficiente: disponível {brl(max(available, Decimal(0)))}.{hint}"}
+                )
+        else:
+            saved = goal_saved(goal)
+            if amount > saved:
+                raise serializers.ValidationError(
+                    {"amount": f"Valor maior que o guardado na meta ({brl(max(saved, Decimal(0)))})."}
+                )
         return attrs

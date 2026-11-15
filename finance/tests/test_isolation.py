@@ -8,6 +8,7 @@ from finance.models import (
     Block,
     Category,
     Goal,
+    GoalMovement,
     Income,
     Investment,
     InvestmentMovement,
@@ -50,6 +51,9 @@ class IsolationTests(TestCase):
         )
         sync_expense(self.movement)
         self.goal = Goal.objects.create(user=o, name="Viagem", target_amount=Decimal("5000"), investment=self.investment)
+        self.goal_movement = GoalMovement.objects.create(
+            user=o, goal=self.goal, kind="retirada", date=date(2026, 10, 7), amount=Decimal("10"),
+        )
         self.allocation = SurplusAllocation.objects.create(
             user=o, competence=date(2026, 10, 1), amount=Decimal("100"), goal=self.goal,
         )
@@ -60,10 +64,10 @@ class IsolationTests(TestCase):
             "incomes": self.income, "month-plans": self.plan, "investments": self.investment,
             "investment-movements": self.movement, "goals": self.goal, "categories": category(o),
             "natures": Nature.objects.filter(user=o).first(), "blocks": Block.objects.filter(user=o).first(),
-            "surplus-allocations": self.allocation,
+            "surplus-allocations": self.allocation, "goal-movements": self.goal_movement,
         }
         self.read_only = {"installments", "invoices"}
-        self.no_edit = self.read_only | {"surplus-allocations"}
+        self.no_edit = self.read_only | {"surplus-allocations", "goal-movements"}
 
     def ids(self, response):
         data = response.data
@@ -88,6 +92,7 @@ class IsolationTests(TestCase):
             ("post", f"/api/invoices/{self.invoice.pk}/pay/", {}),
             ("post", f"/api/installments/{self.installment.pk}/pay/", {"paid": True}),
             ("post", f"/api/investments/{self.investment.pk}/balance/", {"value": "1000"}),
+            ("post", f"/api/goals/{self.goal.pk}/move/", {"kind": "retirada", "amount": "1"}),
         ]
         for method, url, data in calls:
             with self.subTest(url=url):
