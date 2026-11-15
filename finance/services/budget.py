@@ -46,9 +46,12 @@ def budget_income(user, month):
     """Base do orçamento do mês: o recebido substitui o esperado, fonte a fonte.
 
     Fonte com recebimento no mês conta pelo valor recebido; fonte ainda não recebida conta
-    pelo esperado. Recebimentos sem fonte entram como recebido. Com MonthPlan (esperado
-    ajustado à mão), o pendente é o que falta do plano após descontar o esperado das
-    fontes que já caíram.
+    pelo esperado. Com MonthPlan (esperado ajustado à mão), o pendente é o que falta do
+    plano após descontar o esperado das fontes que já caíram.
+
+    Recebimento sem fonte primeiro cobre o esperado ainda pendente (é, em geral, a própria
+    entrada esperada lançada sem fonte); só o que passar dele soma como extra. Assim o mesmo
+    dinheiro nunca conta duas vezes (esperado 5000 + recebido 5000 sem fonte = base 5000).
     """
     month = month_start(month)
     incomes = Income.objects.filter(user=user, date__gte=month, date__lt=add_months(month, 1))
@@ -56,6 +59,7 @@ def budget_income(user, month):
         row["source"]: row["t"] for row in incomes.order_by().values("source").annotate(t=Sum("amount"))
     }
     received = sum(received_by_source.values(), ZERO)
+    unsourced = received_by_source.get(None, ZERO)
     sources = IncomeSource.objects.filter(user=user, active=True, start_month__lte=month).filter(
         Q(end_month__isnull=True) | Q(end_month__gte=month)
     )
@@ -72,6 +76,7 @@ def budget_income(user, month):
     else:
         expected = expected_received + expected_pending
         pending = expected_pending
+    pending = max(pending - unsourced, ZERO)
     return {"base": received + pending, "received": received, "pending_expected": pending, "expected": expected}
 
 

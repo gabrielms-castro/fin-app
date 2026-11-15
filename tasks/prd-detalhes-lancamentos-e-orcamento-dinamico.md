@@ -91,7 +91,7 @@ Este PRD agrupa quatro melhorias, duas de interface e duas de regra de orçament
 - [ ] Nova função `budget_income(user, month)` em `finance/services/budget.py` que retorna `{"base", "received", "pending_expected", "expected"}`
 - [ ] Regra sem `MonthPlan` no mês:
   - para cada `IncomeSource` ativa no mês: se existe `Income` com `source` = essa fonte e data no mês, soma o **recebido** dessa fonte; senão, soma o **esperado** (`amount`)
-  - todos os `Income` sem fonte no mês entram como recebido
+  - todos os `Income` sem fonte no mês entram como recebido, mas **primeiro cobrem o esperado ainda pendente** (fontes não recebidas ou o que falta do `MonthPlan`); só o excedente soma como extra, para o mesmo dinheiro não contar duas vezes
   - `base = recebido total + esperado das fontes ainda não recebidas`
 - [ ] Regra com `MonthPlan` no mês (o usuário ajustou o esperado manualmente): `pending_expected = max(plan.expected_income − soma do amount esperado das fontes já recebidas, 0)` e `base = recebido total + pending_expected`
 - [ ] Exemplos cobertos por teste:
@@ -99,7 +99,8 @@ Este PRD agrupa quatro melhorias, duas de interface e duas de regra de orçament
   - Salário 6000 recebido 6259 + Freela 1000 ainda não recebido → base 7259
   - Salário 6000 recebido só 5800 → base 5800 (recebeu menos, orçamento encolhe)
   - nenhum recebimento → base = esperado (comportamento atual)
-  - recebimento avulso sem fonte de 300 + Salário 6000 pendente → base 6300
+  - recebimento sem fonte de 300 + Salário 6000 pendente → base 6000 (os 300 cobrem parte do esperado); quando o salário cair com fonte → base 6300
+  - `MonthPlan` 5000, sem fontes, recebimento sem fonte de 5000 → base 5000 (não 10000)
 - [ ] `month_summary` passa a usar `base` para calcular o orçamento dos blocos (`_block_rows`), o `balance_expected` e o teto de parcelados (`installments_commitment`)
 - [ ] `month_summary` continua devolvendo `expected_income` (o planejado) e passa a devolver também `budget_base`
 - [ ] `projection` usa `budget_income(...)["base"]` em cada mês (meses futuros sem recebimento continuam iguais ao esperado)

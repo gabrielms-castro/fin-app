@@ -76,9 +76,27 @@ class BudgetIncomeTests(PatchedTodayMixin, TestCase):
         self.receive("5800")
         self.assertEqual(self.base(), D("5800"))
 
-    def test_income_without_source_adds_to_pending_expected(self):
+    def test_income_without_source_covers_pending_first(self):
         self.receive("300", source=None)
+        self.assertEqual(self.base(), D("6000"))
+        # Quando o salário cai (com fonte), os 300 sem fonte passam a ser extra.
+        self.receive("6000")
         self.assertEqual(self.base(), D("6300"))
+
+    def test_plan_without_sources_is_not_counted_twice(self):
+        # Esperado ajustado à mão e recebimento lançado sem fonte: não pode somar os dois.
+        self.salary.delete()
+        MonthPlan.objects.create(user=self.user, competence=OCT, expected_income=D("5000"))
+        self.receive("5000", source=None)
+        income = budget.budget_income(self.user, OCT)
+        self.assertEqual((income["base"], income["pending_expected"]), (D("5000"), D("0")))
+        self.receive("500", source=None)
+        self.assertEqual(self.base(), D("5500"))
+
+    def test_partial_income_without_source_keeps_rest_pending(self):
+        self.receive("2000", source=None)
+        income = budget.budget_income(self.user, OCT)
+        self.assertEqual((income["base"], income["pending_expected"]), (D("6000"), D("4000")))
 
     def test_month_plan_pending_is_what_is_left_of_the_plan(self):
         MonthPlan.objects.create(user=self.user, competence=OCT, expected_income=D("7000"))
